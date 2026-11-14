@@ -1,0 +1,26 @@
+{
+  "name": "road-sand-table",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A calm, floating WebXR sand table for learning right-of-way rules.",
+  "type": "module",
+  "scripts": {
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test tests/unit/*.test.js",
+    "test:smoke": "playwright test",
+    "test:all": "npm test && npm run test:smoke"
+  },
+  "keywords": [
+    "webxr",
+    "threejs",
+    "traffic-safety",
+    "github-pages"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

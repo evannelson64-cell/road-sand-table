@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#e7eceb">
+    <meta name="description" content="A calm floating sand table for learning right-of-way rules.">
+    <title>Road Sand Table</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e9e4d5'/%3E%3Cpath d='M4 17h24' stroke='%2351565b' stroke-width='7'/%3E%3Cpath d='M17 4v24' stroke='%2351565b' stroke-width='7'/%3E%3Crect x='19' y='11' width='7' height='4' rx='1' fill='%232f6fd6'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js",
+          "three/addons/": "./vendor/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="scene-frame" aria-hidden="true">
+      <canvas id="scene"></canvas>
+      <div class="atmosphere"></div>
+    </div>
+
+    <main class="ui-shell">
+      <header class="brand-card">
+        <p class="eyebrow">Road sand table <span class="eyebrow-divider">·</span> <span id="stage-label">Stage 1</span></p>
+        <h1 id="scene-title">Two-way stop</h1>
+        <p id="scene-subtitle" class="scene-subtitle">Oak Lane meets Main Street</p>
+      </header>
+
+      <aside class="legend" aria-label="Scene legend">
+        <div class="legend-row">
+          <span class="legend-dot is-focus"></span>
+          <span>Blue car: focus</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-dot is-other"></span>
+          <span>Red cars: traffic</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-ring"></span>
+          <span>Orange ring: conflict</span>
+        </div>
+        <div class="legend-hint">Drag to orbit · Scroll to zoom</div>
+      </aside>
+
+      <section class="caption-card" aria-labelledby="caption-heading">
+        <p class="kicker" id="caption-heading">Right of way</p>
+        <p id="rule-text" class="rule-text">Loading the rule…</p>
+        <div class="risk-line">
+          <span class="risk-swatch" aria-hidden="true"></span>
+          <div>
+            <p class="kicker">Main risk</p>
+            <p id="risk-text" class="risk-text"></p>
+          </div>
+        </div>
+        <p id="habit-text" class="habit-text"></p>
+      </section>
+
+      <div id="lesson-banner" class="lesson-banner" role="status" aria-live="polite" hidden>
+        <span class="lesson-check" aria-hidden="true">✓</span>
+        <div>
+          <strong id="lesson-title">Correct behavior</strong>
+          <span id="lesson-text"></span>
+        </div>
+      </div>
+
+      <section class="control-panel" aria-label="Simulation controls">
+        <div class="control-head">
+          <div class="scenario-block">
+            <p class="kicker">Scenario</p>
+            <strong id="scenario-name">Two-way stop</strong>
+            <span id="behavior-note" class="behavior-note"></span>
+          </div>
+          <div id="behaviors" class="behavior-group" role="group" aria-label="Traffic behavior"></div>
+        </div>
+
+        <div class="timeline">
+          <div class="transport">
+            <button id="step-back" class="icon-button" type="button" aria-label="Step back one frame">
+              <span aria-hidden="true">◀</span><span class="button-word">Back</span>
+            </button>
+            <button id="play" class="play-button" type="button" aria-label="Pause">
+              <span id="play-symbol" aria-hidden="true">❚❚</span>
+              <span id="play-label">Pause</span>
+            </button>
+            <button id="step-forward" class="icon-button" type="button" aria-label="Step forward one frame">
+              <span class="button-word">Next</span><span aria-hidden="true">▶</span>
+            </button>
+
+            <div class="speed-group" role="group" aria-label="Playback speed">
+              <button class="speed-button is-active" data-speed="1" type="button" aria-pressed="true">1×</button>
+              <button class="speed-button" data-speed="0.5" type="button" aria-pressed="false">0.5×</button>
+              <button class="speed-button" data-speed="0.25" type="button" aria-pressed="false">0.25×</button>
+            </div>
+          </div>
+
+          <div class="scrub-wrap">
+            <label class="sr-only" for="scrub">Simulation time</label>
+            <input id="scrub" type="range" min="0" max="0" value="0" step="1" aria-describedby="scrub-hint">
+            <div class="time-row">
+              <span id="time-current">00:00.000</span>
+              <span id="scrub-hint" class="scrub-hint">Recorded every 1/60 s</span>
+              <span id="time-total">00:00.000</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="control-foot">
+          <button id="reset" class="text-button" type="button">Reset run</button>
+          <span class="foot-note">Two-way stop · traffic keeps right</span>
+        </div>
+      </section>
+    </main>
+
+    <div id="collision-scrim" class="collision-scrim" hidden>
+      <section id="collision-panel" class="collision-panel" role="dialog" aria-modal="true" aria-labelledby="collision-title">
+        <p class="kicker conflict-kicker">Conflict point</p>
+        <h2 id="collision-title">The cars met at the intersection.</h2>
+        <p id="collision-detail" class="collision-detail"></p>
+        <div class="collision-actions">
+          <button id="replay-slow" class="secondary-button" type="button">Replay in slow motion</button>
+          <button id="show-avoid" class="primary-button" type="button">Show how to avoid it</button>
+          <button id="try-again" class="text-button" type="button">Try again</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="loading" class="loading-screen" role="status" aria-live="polite">
+      <span class="loading-mark" aria-hidden="true"></span>
+      <p>Building the neighborhood…</p>
+    </div>
+
+    <div id="error-screen" class="error-screen" role="alert" hidden>
+      <h1>The sand table could not start.</h1>
+      <p id="error-message"></p>
+      <p class="error-help">Try a current browser with WebGL 2 enabled, and serve the site over HTTP rather than opening the file directly.</p>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
