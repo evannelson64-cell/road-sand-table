@@ -1,10 +1,11 @@
-// Desktop scene shell: renderer, camera, lights, tabletop and orbit controls.
+// Scene shell for both desktop orbit mode and immersive WebXR.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createTabletop } from './tabletop.js';
 import { createRoads } from './roads.js';
 import { createScenery } from './scenery.js';
 import { createCarFleet } from './cars.js';
+import { createCornerHandles } from './cornerHandles.js';
 
 export function createWorld(canvas, scenario, cars) {
   const renderer = new THREE.WebGLRenderer({
@@ -17,6 +18,10 @@ export function createWorld(canvas, scenario, cars) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.setClearColor(0x000000, 0);
   renderer.shadowMap.enabled = false;
+
+  // local-floor keeps the table and virtual floor at real room height on Quest.
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
 
   const scene = new THREE.Scene();
 
@@ -64,13 +69,19 @@ export function createWorld(canvas, scenario, cars) {
   fillLight.position.set(4, 3, -4);
   scene.add(fillLight);
 
-  const tabletop = createTabletop(scenario);
-  scene.add(tabletop);
-  scene.add(createRoads(scenario));
-  scene.add(createScenery(scenario));
+  // Everything that belongs to the table lives under one transformable root.
+  // In VR this is scaled to a roughly 1.06 m wide miniature table.
+  const tableRoot = new THREE.Group();
+  tableRoot.name = 'table-root';
+  tableRoot.add(createTabletop(scenario));
+  tableRoot.add(createRoads(scenario));
+  tableRoot.add(createScenery(scenario));
 
   const fleet = createCarFleet(cars);
-  scene.add(fleet.group);
+  tableRoot.add(fleet.group);
+
+  const cornerHandles = createCornerHandles(scenario);
+  tableRoot.add(cornerHandles.group);
 
   const conflictRing = new THREE.Mesh(
     new THREE.TorusGeometry(0.13, 0.011, 6, 32),
@@ -86,18 +97,91 @@ export function createWorld(canvas, scenario, cars) {
   conflictRing.position.y = 0.025;
   conflictRing.visible = false;
   conflictRing.renderOrder = 6;
-  scene.add(conflictRing);
+  tableRoot.add(conflictRing);
+
+  scene.add(tableRoot);
+
+  // A quiet virtual floor gives the floating table a room-scale reference in
+  // immersive mode. It is hidden on desktop, where CSS supplies the backdrop.
+  const room = new THREE.Group();
+  room.name = 'xr-room-reference';
+  room.visible = false;
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(3.2, 48),
+    new THREE.MeshBasicMaterial({ color: '#d8d2c3' }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  room.add(floor);
+
+  const grid = new THREE.GridHelper(6, 24, 0x8d958d, 0xb7b8ad);
+  grid.position.y = 0.002;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.24;
+  grid.material.depthWrite = false;
+  room.add(grid);
+
+  const roomEdge = new THREE.Mesh(
+    new THREE.RingGeometry(3.18, 3.24, 64),
+    new THREE.MeshBasicMaterial({
+      color: '#9fa89f',
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+    }),
+  );
+  roomEdge.rotation.x = -Math.PI / 2;
+  roomEdge.position.y = 0.003;
+  room.add(roomEdge);
+  scene.add(room);
+
+  let desktopCameraState = null;
+
+  function enterXrMode() {
+    desktopCameraState = {
+      position: camera.position.clone(),
+      quaternion: camera.quaternion.clone(),
+      target: controls.target.clone(),
+      fov: camera.fov,
+    };
+    controls.enabled = false;
+    room.visible = true;
+    scene.background = new THREE.Color('#b8c5c4');
+    scene.fog = new THREE.Fog('#b8c5c4', 2.6, 5.6);
+  }
+
+  function exitXrMode() {
+    controls.enabled = true;
+    room.visible = false;
+    scene.background = null;
+    scene.fog = null;
+
+    if (desktopCameraState) {
+      camera.position.copy(desktopCameraState.position);
+      camera.quaternion.copy(desktopCameraState.quaternion);
+      camera.fov = desktopCameraState.fov;
+      camera.updateProjectionMatrix();
+      controls.target.copy(desktopCameraState.target);
+      controls.update();
+    }
+
+    tableRoot.position.set(0, 0, 0);
+    tableRoot.rotation.set(0, 0, 0);
+    tableRoot.scale.setScalar(1);
+  }
 
   function resize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    renderer.setSize(width, height, false);
-    camera.aspect = width / Math.max(1, height);
-    camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    if (!renderer.xr.isPresenting) {
+      renderer.setSize(width, height, false);
+      camera.aspect = width / Math.max(1, height);
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
-    if (!userHasMovedCamera) {
-      frameCamera();
+      if (!userHasMovedCamera) {
+        frameCamera();
+      }
     }
   }
 
@@ -109,7 +193,11 @@ export function createWorld(canvas, scenario, cars) {
     scene,
     camera,
     controls,
+    tableRoot,
+    cornerHandles: cornerHandles.handles,
     conflictRing,
+    enterXrMode,
+    exitXrMode,
     updateCars(snapshots) {
       fleet.update(snapshots);
     },
@@ -123,7 +211,9 @@ export function createWorld(canvas, scenario, cars) {
       conflictRing.visible = true;
     },
     render() {
-      controls.update();
+      if (!renderer.xr.isPresenting) {
+        controls.update();
+      }
       renderer.render(scene, camera);
     },
   };
