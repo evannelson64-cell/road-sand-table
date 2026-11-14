@@ -1,0 +1,55 @@
+{
+  "default": "two-way-stop",
+  "scenarios": [
+    {
+      "id": "signal-unprotected-left",
+      "title": "Unprotected left",
+      "file": "scenario-signal-unprotected-left.json"
+    },
+    {
+      "id": "all-way-stop",
+      "title": "All-way stop",
+      "file": "scenario-all-way-stop.json"
+    },
+    {
+      "id": "two-way-stop",
+      "title": "Two-way stop",
+      "file": "scenario-two-way-stop.json"
+    },
+    {
+      "id": "t-intersection",
+      "title": "T-intersection",
+      "file": "scenario-t-intersection.json"
+    },
+    {
+      "id": "highway-merge",
+      "title": "Highway on-ramp",
+      "file": "scenario-highway-merge.json"
+    },
+    {
+      "id": "roundabout",
+      "title": "Roundabout",
+      "file": "scenario-roundabout.json"
+    },
+    {
+      "id": "one-way-street",
+      "title": "One-way street",
+      "file": "scenario-one-way-street.json"
+    },
+    {
+      "id": "lane-change-blind-spot",
+      "title": "Blind-spot lane change",
+      "file": "scenario-lane-change-blind-spot.json"
+    },
+    {
+      "id": "driveway-hidden-van",
+      "title": "Hidden driveway",
+      "file": "scenario-driveway-hidden-van.json"
+    },
+    {
+      "id": "railroad-crossing",
+      "title": "Railroad crossing",
+      "file": "scenario-railroad-crossing.json"
+    }
+  ]
+}

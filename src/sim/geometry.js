@@ -24,8 +24,7 @@ export function buildPolyline(points) {
   };
 }
 
-/** Return position and unit direction at a distance along a polyline. */
-export function poseAt(path, distance) {
+function positionAt(path, distance) {
   const s = Math.max(0, Math.min(path.length, distance));
   let segment = 1;
 
@@ -40,17 +39,91 @@ export function poseAt(path, distance) {
   const segmentLength = path.cumulative[index] - segmentStart;
   const t = segmentLength > 0 ? (s - segmentStart) / segmentLength : 0;
 
-  const dirX = segmentLength > 0 ? (end.x - start.x) / segmentLength : 1;
-  const dirZ = segmentLength > 0 ? (end.z - start.z) / segmentLength : 0;
-
   return {
     x: start.x + (end.x - start.x) * t,
     z: start.z + (end.z - start.z) * t,
+    fallbackX: segmentLength > 0 ? (end.x - start.x) / segmentLength : 1,
+    fallbackZ: segmentLength > 0 ? (end.z - start.z) / segmentLength : 0,
+  };
+}
+
+/** Return position and unit direction at a distance along a polyline. */
+export function poseAt(path, distance) {
+  const s = Math.max(0, Math.min(path.length, distance));
+  const point = positionAt(path, s);
+
+  // A short look-ahead/look-behind chord removes the heading tick that would
+  // otherwise occur at each sampled spline vertex. The car still follows the
+  // same arc length, but rotates smoothly through a turn.
+  const look = Math.min(0.045, Math.max(0.012, path.length * 0.012));
+  const before = positionAt(path, s - look);
+  const after = positionAt(path, s + look);
+  let dirX = after.x - before.x;
+  let dirZ = after.z - before.z;
+  const length = Math.hypot(dirX, dirZ);
+
+  if (length > 0.000001) {
+    dirX /= length;
+    dirZ /= length;
+  } else {
+    dirX = point.fallbackX;
+    dirZ = point.fallbackZ;
+  }
+
+  return {
+    x: point.x,
+    z: point.z,
     dirX,
     dirZ,
     // Local +Z is the front of a rendered car.
     heading: Math.atan2(dirX, dirZ),
   };
+}
+
+/**
+ * Sample a Catmull-Rom spline through control points. This keeps turn and lane
+ * change paths smooth while the simulation still moves along a sampled
+ * polyline with exact arc-length distances.
+ */
+export function smoothPolyline(points, samplesPerSegment = 12) {
+  if (points.length < 3) {
+    return points.map((point) => ({ ...point }));
+  }
+
+  const result = [];
+  const at = (index) => points[Math.max(0, Math.min(points.length - 1, index))];
+
+  for (let segment = 0; segment < points.length - 1; segment += 1) {
+    const p0 = at(segment - 1);
+    const p1 = at(segment);
+    const p2 = at(segment + 1);
+    const p3 = at(segment + 2);
+    const steps = Math.max(2, samplesPerSegment);
+
+    for (let step = 0; step < steps; step += 1) {
+      const t = step / steps;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      result.push({
+        x: 0.5 * (
+          2 * p1.x +
+          (-p0.x + p2.x) * t +
+          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+        ),
+        z: 0.5 * (
+          2 * p1.z +
+          (-p0.z + p2.z) * t +
+          (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 +
+          (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3
+        ),
+      });
+    }
+  }
+
+  const last = points[points.length - 1];
+  result.push({ x: last.x, z: last.z });
+  return result;
 }
 
 /**

@@ -10,8 +10,9 @@ function formatTime(seconds) {
 }
 
 export class UI {
-  constructor(scenario, callbacks) {
+  constructor(scenario, scenarios, callbacks) {
     this.scenario = scenario;
+    this.scenarios = scenarios;
     this.callbacks = callbacks;
     this.behaviorButtons = new Map();
     this.isScrubbing = false;
@@ -24,7 +25,8 @@ export class UI {
       rule: document.querySelector('#rule-text'),
       risk: document.querySelector('#risk-text'),
       habit: document.querySelector('#habit-text'),
-      scenarioName: document.querySelector('#scenario-name'),
+      scenarioSelect: document.querySelector('#scenario-select'),
+      footNote: document.querySelector('#foot-note'),
       behaviorNote: document.querySelector('#behavior-note'),
       behaviors: document.querySelector('#behaviors'),
       play: document.querySelector('#play'),
@@ -53,20 +55,36 @@ export class UI {
       vrToast: document.querySelector('#vr-toast'),
     };
 
-    this.populateScenario();
+    this.populateScenarioMenu();
+    this.setScenario(scenario);
     this.bindEvents();
   }
 
-  populateScenario() {
-    const { elements, scenario } = this;
+  populateScenarioMenu() {
+    const select = this.elements.scenarioSelect;
+    select.replaceChildren();
+    for (const entry of this.scenarios) {
+      const option = document.createElement('option');
+      option.value = entry.id;
+      option.textContent = entry.title;
+      select.append(option);
+    }
+  }
+
+  setScenario(scenario, index = 0, count = this.scenarios.length) {
+    const { elements } = this;
+    this.scenario = scenario;
     elements.title.textContent = scenario.title;
     elements.subtitle.textContent = scenario.subtitle;
-    elements.scenarioName.textContent = scenario.title;
-    elements.stage.textContent = 'Stage 2';
+    elements.stage.textContent = count > 1 ? `Stage 3 · ${index + 1}/${count}` : 'Stage 3';
     elements.rule.textContent = scenario.caption.rule;
     elements.risk.textContent = scenario.caption.risk;
     elements.habit.textContent = scenario.caption.habit;
+    elements.scenarioSelect.value = scenario.id;
+    elements.footNote.textContent = `${scenario.title} · right-hand traffic`;
 
+    this.behaviorButtons.clear();
+    elements.behaviors.replaceChildren();
     for (const behavior of scenario.behaviors) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -96,6 +114,9 @@ export class UI {
     elements.stepForward.addEventListener('click', () => this.callbacks.onStepForward());
     elements.reset.addEventListener('click', () => this.callbacks.onReset());
     elements.enterVr.addEventListener('click', () => this.callbacks.onEnterVr());
+    elements.scenarioSelect.addEventListener('change', () => {
+      this.callbacks.onScenario(elements.scenarioSelect.value);
+    });
     elements.replaySlow.addEventListener('click', () => this.callbacks.onReplaySlow());
     elements.showAvoid.addEventListener('click', () => this.callbacks.onShowAvoid());
     elements.tryAgain.addEventListener('click', () => this.callbacks.onTryAgain());
@@ -175,7 +196,7 @@ export class UI {
   }
 
   showCollision({ time, detail }) {
-    this.elements.collisionTitle.textContent = `Two cars met at ${formatTime(time)}.`;
+    this.elements.collisionTitle.textContent = `Conflict at ${formatTime(time)}.`;
     this.elements.collisionDetail.textContent = detail;
     this.elements.collisionScrim.hidden = false;
     this.elements.showAvoid.focus({ preventScroll: true });

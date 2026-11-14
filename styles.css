@@ -332,13 +332,30 @@ body.is-xr .vr-toast {
   min-width: 180px;
 }
 
-.scenario-block strong {
+.scenario-select {
   display: block;
-  margin-top: 3px;
+  width: 100%;
+  max-width: 310px;
+  margin-top: 4px;
+  padding: 0 26px 0 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
   font-family: var(--serif);
   font-size: 22px;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.scenario-select:hover {
+  border-bottom-color: var(--line-strong);
+}
+
+.scenario-select:focus-visible {
+  outline-offset: 4px;
 }
 
 .behavior-note {
@@ -887,7 +904,7 @@ button:disabled {
     display: none;
   }
 
-  .scenario-block strong {
+  .scenario-select {
     margin: 0;
     font-size: 18px;
   }

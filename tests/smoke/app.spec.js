@@ -55,7 +55,7 @@ test('a no-yield run pauses at contact and can show the safe version', async ({ 
   await page.waitForFunction(() => window.__sandTable.getState().collision !== null);
 
   await expect(page.locator('#collision-scrim')).toBeVisible();
-  await expect(page.locator('#collision-title')).toContainText('Two cars met');
+  await expect(page.locator('#collision-title')).toContainText('Conflict at');
   await expect(page.locator('#show-avoid')).toBeVisible();
 
   const crashed = await collisionState(page);
@@ -114,6 +114,37 @@ test('slow-motion replay and the scrubber return to recorded frames exactly', as
   await page.evaluate(() => window.__sandTable.stepForward());
   expect((await collisionState(page)).frameIndex).toBe(targetFrame);
 
+  expect(errors.consoleErrors).toEqual([]);
+  expect(errors.pageErrors).toEqual([]);
+  expect(errors.failedRequests).toEqual([]);
+});
+
+test('the scenario menu loads different road layouts', async ({ page }) => {
+  const errors = await openApp(page);
+
+  await page.selectOption('#scenario-select', 'signal-unprotected-left');
+  await page.waitForFunction(
+    () => window.__sandTable.getState().scenarioId === 'signal-unprotected-left',
+  );
+
+  let state = await page.evaluate(() => window.__sandTable.getState());
+  expect(state.scenarioTitle).toBe('Unprotected left');
+  expect(state.scenarioCount).toBe(10);
+  expect(state.cars).toHaveLength(2);
+  await expect(page.locator('#scene-title')).toHaveText('Unprotected left');
+  await expect(page.locator('#stage-label')).toContainText('1/10');
+  await expect(page.locator('[data-behavior="no-yield"]')).toBeVisible();
+
+  await page.selectOption('#scenario-select', 'railroad-crossing');
+  await page.waitForFunction(
+    () => window.__sandTable.getState().scenarioId === 'railroad-crossing',
+  );
+  state = await page.evaluate(() => window.__sandTable.getState());
+  expect(state.cars).toHaveLength(2);
+  expect(state.trains).toHaveLength(1);
+  await expect(page.locator('#scene-title')).toHaveText('Railroad crossing');
+
+  await page.waitForTimeout(300);
   expect(errors.consoleErrors).toEqual([]);
   expect(errors.pageErrors).toEqual([]);
   expect(errors.failedRequests).toEqual([]);

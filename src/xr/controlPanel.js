@@ -90,6 +90,8 @@ export class XrControlPanel {
       time: 0,
       handTracking: false,
       notice: null,
+      scenarioIndex: 0,
+      scenarioCount: 1,
     };
     this.buttons = [];
     this.hoverId = null;
@@ -127,6 +129,14 @@ export class XrControlPanel {
     this.root.add(this.mesh);
     this.root.visible = false;
 
+    this.draw();
+  }
+
+  setScenario(scenario, index = 0, count = 1) {
+    this.scenario = scenario;
+    this.state.behaviorId = scenario.behaviors[0]?.id ?? null;
+    this.state.scenarioIndex = index;
+    this.state.scenarioCount = count;
     this.draw();
   }
 
@@ -311,6 +321,12 @@ export class XrControlPanel {
         break;
       case 'exit-vr':
         this.callbacks.onExitVr();
+        break;
+      case 'scenario-prev':
+        this.callbacks.onScenarioPrev();
+        break;
+      case 'scenario-next':
+        this.callbacks.onScenarioNext();
         break;
       default:
         if (id.startsWith('behavior-')) {
@@ -516,10 +532,16 @@ export class XrControlPanel {
         context.fillText('Repeat the safe choice after every conflict.', 58, 673);
       }
 
-      this.drawButton('exit-vr', 1180, 730, 166, 58, 'Exit VR', { fontSize: 15 });
+      this.drawButton('scenario-prev', 58, 730, 126, 58, '‹ Prev', { fontSize: 15 });
+      this.drawButton('scenario-next', 194, 730, 126, 58, 'Next ›', { fontSize: 15 });
       context.fillStyle = COLORS.muted;
       context.font = '400 15px system-ui, sans-serif';
-      context.fillText('World-space panel · grip the dashed header to move it', 58, 765);
+      context.fillText(
+        `Scenario ${state.scenarioIndex + 1} of ${state.scenarioCount}`,
+        334,
+        765,
+      );
+      this.drawButton('exit-vr', 1180, 730, 166, 58, 'Exit VR', { fontSize: 15 });
     }
 
     this.texture.needsUpdate = true;
@@ -533,6 +555,8 @@ export class XrControlPanel {
       frameCount: state.frameCount,
       handTracking: state.handTracking,
       notice: state.notice,
+      scenarioIndex: state.scenarioIndex,
+      scenarioCount: state.scenarioCount,
       hoverId: this.hoverId,
     });
   }
