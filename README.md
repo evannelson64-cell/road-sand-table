@@ -3,9 +3,11 @@
 A calm, floating tabletop neighborhood for learning right-of-way rules. It is a
 small static Three.js app built for the browser first and Meta Quest WebXR later.
 
-> **Current status: Stage 1 complete.** This build is desktop/phone only. There
-> is intentionally no WebXR session, hand tracking or VR placement yet. Do not
-> expect an **Enter VR** button in this stage.
+> **Current status: Stage 1 complete and deployed.** Open the live site at
+> **<https://evannelson64-cell.github.io/road-sand-table/>** (HTTPS verified).
+> This build is desktop/phone only. There is intentionally no WebXR session,
+> hand tracking or VR placement yet. Do not expect an **Enter VR** button in
+> this stage.
 
 ![Desktop view of the two-way-stop sand table](docs/stage-1-desktop.png)
 
@@ -84,17 +86,26 @@ The smoke test starts the static server itself and walks through:
 - slow-motion replay plus exact scrub/step-back/step-forward frame checks.
 
 The last local verification was on 2026-11-13: **8/8 unit tests and 3/3
-Playwright smoke tests passing** in headless Chromium 141.
+Playwright smoke tests passing** in headless Chromium 141. The deployed site was
+also loaded in headless Chrome with no console errors or failed static requests.
 
 ## Deploy to GitHub Pages
 
+The live Stage 1 site is:
+
+**<https://evannelson64-cell.github.io/road-sand-table/>**
+
 This repository includes
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml), which publishes the
-static files on every push to `main`.
+static files on every push to `main`. Pages is enabled with **Source: GitHub
+Actions**, and the deployment workflow completed successfully. GitHub Pages
+serves the site over HTTPS.
+
+To reproduce this setup for another copy:
 
 1. Create an empty GitHub repository, then add it as `origin`.
-2. Push the feature branch and open a pull request (do not push directly to
-   `main`):
+2. Push `main` and a feature branch, then open a pull request (do not push
+   directly to `main`):
 
    ```bash
    git remote add origin https://github.com/OWNER/REPO.git
@@ -107,11 +118,9 @@ static files on every push to `main`.
 4. In the repository, open **Settings → Pages**. Under **Build and deployment**,
    set **Source** to **GitHub Actions**. This is a repository setting and should
    only be enabled after the owner approves it.
-5. If the pages workflow has not run yet, open **Actions → Deploy static site to
-   GitHub Pages → Run workflow**.
-6. The published URL is `https://OWNER.github.io/REPO/`. GitHub Pages serves it
-   over HTTPS. The final URL cannot be confirmed until the repository exists and
-   Pages is enabled.
+5. The workflow deploys automatically. If needed, open **Actions → Deploy static
+   site to GitHub Pages → Run workflow**.
+6. The URL will be `https://OWNER.github.io/REPO/` over HTTPS.
 
 Equivalent Pages-enable API call, to be run only with approval:
 
