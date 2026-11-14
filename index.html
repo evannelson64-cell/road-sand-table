@@ -25,10 +25,17 @@
 
     <main class="ui-shell">
       <header class="brand-card">
-        <p class="eyebrow">Road sand table <span class="eyebrow-divider">·</span> <span id="stage-label">Stage 1</span></p>
+        <p class="eyebrow">Road sand table <span class="eyebrow-divider">·</span> <span id="stage-label">Stage 2</span></p>
         <h1 id="scene-title">Two-way stop</h1>
         <p id="scene-subtitle" class="scene-subtitle">Oak Lane meets Main Street</p>
       </header>
+
+      <button id="enter-vr" class="vr-button" type="button" hidden>
+        <span class="vr-button-icon" aria-hidden="true">◉</span>
+        <span>Enter VR</span>
+      </button>
+
+      <div id="vr-toast" class="vr-toast" role="status" aria-live="polite" hidden></div>
 
       <aside class="legend" aria-label="Scene legend">
         <div class="legend-row">
@@ -43,7 +50,7 @@
           <span class="legend-ring"></span>
           <span>Orange ring: conflict</span>
         </div>
-        <div class="legend-hint">Drag to orbit · Scroll to zoom</div>
+        <div class="legend-hint">Desktop: drag to orbit · Scroll to zoom<br>Quest: Enter VR to place the table</div>
       </aside>
 
       <section class="caption-card" aria-labelledby="caption-heading">

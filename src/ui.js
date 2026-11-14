@@ -49,6 +49,8 @@ export class UI {
       loading: document.querySelector('#loading'),
       error: document.querySelector('#error-screen'),
       errorMessage: document.querySelector('#error-message'),
+      enterVr: document.querySelector('#enter-vr'),
+      vrToast: document.querySelector('#vr-toast'),
     };
 
     this.populateScenario();
@@ -60,7 +62,7 @@ export class UI {
     elements.title.textContent = scenario.title;
     elements.subtitle.textContent = scenario.subtitle;
     elements.scenarioName.textContent = scenario.title;
-    elements.stage.textContent = 'Stage 1';
+    elements.stage.textContent = 'Stage 2';
     elements.rule.textContent = scenario.caption.rule;
     elements.risk.textContent = scenario.caption.risk;
     elements.habit.textContent = scenario.caption.habit;
@@ -93,6 +95,7 @@ export class UI {
     elements.stepBack.addEventListener('click', () => this.callbacks.onStepBack());
     elements.stepForward.addEventListener('click', () => this.callbacks.onStepForward());
     elements.reset.addEventListener('click', () => this.callbacks.onReset());
+    elements.enterVr.addEventListener('click', () => this.callbacks.onEnterVr());
     elements.replaySlow.addEventListener('click', () => this.callbacks.onReplaySlow());
     elements.showAvoid.addEventListener('click', () => this.callbacks.onShowAvoid());
     elements.tryAgain.addEventListener('click', () => this.callbacks.onTryAgain());
@@ -204,5 +207,32 @@ export class UI {
 
   setPlayDisabled(disabled) {
     this.elements.play.disabled = disabled;
+  }
+
+  setVrSupported(supported) {
+    this.elements.enterVr.hidden = !supported;
+    this.elements.enterVr.disabled = false;
+  }
+
+  setVrBusy(busy) {
+    this.elements.enterVr.disabled = busy;
+    this.elements.enterVr.querySelector('span:last-child').textContent = busy
+      ? 'Entering…'
+      : 'Enter VR';
+  }
+
+  showVrToast(message, timeout = 6000) {
+    const toast = this.elements.vrToast;
+    toast.textContent = message;
+    toast.hidden = false;
+    clearTimeout(this.vrToastTimer);
+    this.vrToastTimer = setTimeout(() => {
+      toast.hidden = true;
+    }, timeout);
+  }
+
+  hideVrToast() {
+    clearTimeout(this.vrToastTimer);
+    this.elements.vrToast.hidden = true;
   }
 }

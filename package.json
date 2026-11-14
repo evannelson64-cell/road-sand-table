@@ -21,6 +21,7 @@
     "three": "0.169.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.56.1"
+    "@playwright/test": "1.56.1",
+    "playwright-webxr": "0.7.0"
   }
 }
