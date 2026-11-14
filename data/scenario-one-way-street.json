@@ -1,0 +1,323 @@
+{
+  "id": "one-way-street",
+  "title": "One-way street",
+  "subtitle": "Two lanes, one direction",
+  "stageNote": "Stage 3 scenario tile",
+  "table": {
+    "width": 3.8,
+    "depth": 3.0,
+    "playWidth": 3.62,
+    "playDepth": 2.82
+  },
+  "bounds": {
+    "xMin": -1.81,
+    "xMax": 1.81,
+    "zMin": -1.41,
+    "zMax": 1.41
+  },
+  "caption": {
+    "rule": "On a one-way street, all lanes travel the same direction. Enter the correct lane and still yield when emerging from a side street.",
+    "risk": "The blue car turns into the near one-way lane without checking the red car already traveling in it.",
+    "habit": "Read the one-way arrows, enter with traffic, and check the near lane before completing the turn."
+  },
+  "nodes": [
+    {
+      "id": "oneway-tee",
+      "x": -0.35,
+      "z": 0.21,
+      "half": 0.35,
+      "junction": false,
+      "controls": {
+        "south": "stop"
+      },
+      "yield": {
+        "south": [
+          "main-EB-right",
+          "main-EB-left"
+        ]
+      }
+    }
+  ],
+  "roads": [
+    {
+      "id": "main",
+      "points": [
+        [
+          -1.78,
+          0.21
+        ],
+        [
+          1.78,
+          0.21
+        ]
+      ],
+      "width": 0.82,
+      "centerLine": "dashed-white"
+    },
+    {
+      "id": "side",
+      "points": [
+        [
+          -0.35,
+          1.38
+        ],
+        [
+          -0.35,
+          0.21
+        ]
+      ],
+      "width": 0.62,
+      "marking": "none"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "main-EB-right",
+      "node": "oneway-tee",
+      "approach": "west",
+      "speed": 0.28,
+      "points": [
+        [
+          -1.62,
+          0.42
+        ],
+        [
+          1.62,
+          0.42
+        ]
+      ]
+    },
+    {
+      "id": "main-EB-left",
+      "node": "oneway-tee",
+      "approach": "west",
+      "speed": 0.3,
+      "points": [
+        [
+          -1.62,
+          0.0
+        ],
+        [
+          1.62,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "side-turn-right",
+      "node": "oneway-tee",
+      "approach": "south",
+      "speed": 0.2,
+      "smooth": true,
+      "samplesPerSegment": 14,
+      "points": [
+        [
+          -0.19,
+          1.3
+        ],
+        [
+          -0.19,
+          0.78
+        ],
+        [
+          -0.16,
+          0.64
+        ],
+        [
+          -0.02,
+          0.55
+        ],
+        [
+          0.18,
+          0.47
+        ],
+        [
+          0.42,
+          0.42
+        ],
+        [
+          1.0,
+          0.42
+        ]
+      ]
+    }
+  ],
+  "cars": [
+    {
+      "id": "focus",
+      "label": "Blue turning car",
+      "lane": "side-turn-right",
+      "start": 0,
+      "color": "focus"
+    },
+    {
+      "id": "right",
+      "label": "Red right-lane car",
+      "lane": "main-EB-right",
+      "start": 0,
+      "color": "other"
+    },
+    {
+      "id": "left",
+      "label": "Red left-lane car",
+      "lane": "main-EB-left",
+      "start": 0.3,
+      "color": "other"
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "rules",
+      "label": "Enters with traffic",
+      "violations": {},
+      "note": "The blue car waits for a safe gap in the one-way traffic.",
+      "isCorrect": true
+    },
+    {
+      "id": "no-yield",
+      "label": "Turns into the lane",
+      "violations": {
+        "focus": "yield"
+      },
+      "note": "The blue car turns into the near lane without yielding to the red car.",
+      "isCorrect": false
+    }
+  ],
+  "avoidance": {
+    "behavior": "rules",
+    "title": "Correct behavior",
+    "text": "The blue car yields to the one-way traffic and enters behind the red car."
+  },
+  "stopLines": [
+    {
+      "x": -0.19,
+      "z": 0.64,
+      "width": 0.28,
+      "depth": 0.035
+    }
+  ],
+  "signs": [
+    {
+      "type": "stop",
+      "x": 0.02,
+      "z": 0.78,
+      "facing": "south"
+    },
+    {
+      "type": "oneway",
+      "x": -0.82,
+      "z": 0.76,
+      "facing": "south"
+    },
+    {
+      "type": "oneway",
+      "x": 0.92,
+      "z": 0.76,
+      "facing": "south"
+    }
+  ],
+  "laneArrows": [
+    {
+      "x": -1.15,
+      "z": 0.0,
+      "heading": 0
+    },
+    {
+      "x": -0.1,
+      "z": 0.0,
+      "heading": 0
+    },
+    {
+      "x": 1.0,
+      "z": 0.0,
+      "heading": 0
+    },
+    {
+      "x": -1.15,
+      "z": 0.42,
+      "heading": 0
+    },
+    {
+      "x": -0.1,
+      "z": 0.42,
+      "heading": 0
+    },
+    {
+      "x": 1.0,
+      "z": 0.42,
+      "heading": 0
+    }
+  ],
+  "scenery": {
+    "houses": [
+      {
+        "x": -1.26,
+        "z": -0.75,
+        "w": 0.36,
+        "d": 0.28,
+        "h": 0.17,
+        "body": "#ead9bb",
+        "roof": "#9b6b53"
+      },
+      {
+        "x": 1.28,
+        "z": -0.78,
+        "w": 0.34,
+        "d": 0.28,
+        "h": 0.19,
+        "body": "#dfe6d0",
+        "roof": "#7c6252"
+      },
+      {
+        "x": -1.28,
+        "z": 1.03,
+        "w": 0.34,
+        "d": 0.26,
+        "h": 0.16,
+        "body": "#e6d8c5",
+        "roof": "#8e5e4f"
+      },
+      {
+        "x": 1.24,
+        "z": 1.04,
+        "w": 0.36,
+        "d": 0.27,
+        "h": 0.18,
+        "body": "#e2dfcc",
+        "roof": "#6e6257"
+      }
+    ],
+    "trees": [
+      {
+        "x": -1.58,
+        "z": 0.62,
+        "scale": 0.8
+      },
+      {
+        "x": 1.58,
+        "z": 0.62,
+        "scale": 0.84
+      },
+      {
+        "x": -1.58,
+        "z": -0.32,
+        "scale": 0.9
+      },
+      {
+        "x": 1.58,
+        "z": -0.35,
+        "scale": 0.82
+      },
+      {
+        "x": -0.92,
+        "z": 1.22,
+        "scale": 0.72
+      },
+      {
+        "x": 0.92,
+        "z": 1.22,
+        "scale": 0.78
+      }
+    ]
+  }
+}

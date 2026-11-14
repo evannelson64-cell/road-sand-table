@@ -263,3 +263,30 @@ test('two-hand scaling and the collision lesson work in immersive VR', async ({ 
   expect(errors.consoleErrors).toEqual([]);
   expect(errors.pageErrors).toEqual([]);
 });
+
+test('scenario navigation works inside immersive VR', async ({ page, xr }) => {
+  const errors = watchErrors(page);
+  await enterVr(page, xr);
+
+  let current = await state(page);
+  expect(current.scenarioId).toBe('two-way-stop');
+  expect(current.xr.panelVisible).toBe(true);
+
+  await clickPanel(page, xr, 'scenario-next');
+  await page.waitForFunction(
+    () => window.__sandTable.getState().scenarioId === 't-intersection',
+  );
+  current = await state(page);
+  expect(current.scenarioTitle).toBe('T-intersection');
+  expect(current.playing).toBe(false);
+  expect(current.xr.panelVisible).toBe(true);
+  expect(current.xr.tableCorners).toHaveLength(4);
+
+  await clickPanel(page, xr, 'scenario-prev');
+  await page.waitForFunction(
+    () => window.__sandTable.getState().scenarioId === 'two-way-stop',
+  );
+
+  expect(errors.consoleErrors).toEqual([]);
+  expect(errors.pageErrors).toEqual([]);
+});

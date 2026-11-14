@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#e7eceb">
-    <meta name="description" content="A calm floating sand table for learning right-of-way rules.">
+    <meta name="description" content="A calm floating WebXR sand table for learning right-of-way rules across ten traffic scenarios.">
     <title>Road Sand Table</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e9e4d5'/%3E%3Cpath d='M4 17h24' stroke='%2351565b' stroke-width='7'/%3E%3Cpath d='M17 4v24' stroke='%2351565b' stroke-width='7'/%3E%3Crect x='19' y='11' width='7' height='4' rx='1' fill='%232f6fd6'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="./styles.css">
@@ -25,7 +25,7 @@
 
     <main class="ui-shell">
       <header class="brand-card">
-        <p class="eyebrow">Road sand table <span class="eyebrow-divider">·</span> <span id="stage-label">Stage 2</span></p>
+        <p class="eyebrow">Road sand table <span class="eyebrow-divider">·</span> <span id="stage-label">Stage 3</span></p>
         <h1 id="scene-title">Two-way stop</h1>
         <p id="scene-subtitle" class="scene-subtitle">Oak Lane meets Main Street</p>
       </header>
@@ -77,8 +77,8 @@
       <section class="control-panel" aria-label="Simulation controls">
         <div class="control-head">
           <div class="scenario-block">
-            <p class="kicker">Scenario</p>
-            <strong id="scenario-name">Two-way stop</strong>
+            <label class="kicker" for="scenario-select">Scenario</label>
+            <select id="scenario-select" class="scenario-select" aria-label="Choose a scenario"></select>
             <span id="behavior-note" class="behavior-note"></span>
           </div>
           <div id="behaviors" class="behavior-group" role="group" aria-label="Traffic behavior"></div>
@@ -117,7 +117,7 @@
 
         <div class="control-foot">
           <button id="reset" class="text-button" type="button">Reset run</button>
-          <span class="foot-note">Two-way stop · traffic keeps right</span>
+          <span id="foot-note" class="foot-note">Right-hand traffic · two-way stop</span>
         </div>
       </section>
     </main>

@@ -1,0 +1,272 @@
+{
+  "id": "railroad-crossing",
+  "title": "Railroad crossing",
+  "subtitle": "Flashing lights mean stop",
+  "stageNote": "Stage 3 scenario tile",
+  "table": {
+    "width": 3.8,
+    "depth": 3.0,
+    "playWidth": 3.62,
+    "playDepth": 2.82
+  },
+  "bounds": {
+    "xMin": -1.81,
+    "xMax": 1.81,
+    "zMin": -1.41,
+    "zMax": 1.41
+  },
+  "caption": {
+    "rule": "When the crossing lights flash, stop before the tracks and stay stopped until the train has cleared.",
+    "risk": "The blue car drives around the stop line while the train is crossing.",
+    "habit": "Stop at the line, look both ways, and never try to beat a train."
+  },
+  "nodes": [
+    {
+      "id": "rail-cross",
+      "x": 0.45,
+      "z": 0,
+      "half": 0.18,
+      "junction": false,
+      "controls": {
+        "west": "rail",
+        "east": "rail"
+      },
+      "railroad": {
+        "activationDistance": 1.2
+      }
+    }
+  ],
+  "roads": [
+    {
+      "id": "main",
+      "points": [
+        [
+          -1.78,
+          0
+        ],
+        [
+          1.78,
+          0
+        ]
+      ],
+      "width": 0.66,
+      "marking": "dashed-yellow"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "main-EB",
+      "node": "rail-cross",
+      "approach": "west",
+      "speed": 0.25,
+      "points": [
+        [
+          -1.65,
+          0.17
+        ],
+        [
+          1.65,
+          0.17
+        ]
+      ]
+    },
+    {
+      "id": "main-WB",
+      "node": "rail-cross",
+      "approach": "east",
+      "speed": 0.23,
+      "points": [
+        [
+          1.65,
+          -0.17
+        ],
+        [
+          -1.65,
+          -0.17
+        ]
+      ]
+    },
+    {
+      "id": "train-NS",
+      "speed": 0.22,
+      "points": [
+        [
+          0.45,
+          -1.7
+        ],
+        [
+          0.45,
+          1.7
+        ]
+      ]
+    }
+  ],
+  "trains": [
+    {
+      "id": "train",
+      "label": "Freight train",
+      "lane": "train-NS",
+      "start": 0.2,
+      "speed": 0.22,
+      "length": 0.9,
+      "width": 0.2,
+      "color": "train"
+    }
+  ],
+  "cars": [
+    {
+      "id": "focus",
+      "label": "Blue eastbound car",
+      "lane": "main-EB",
+      "start": 0,
+      "color": "focus"
+    },
+    {
+      "id": "west",
+      "label": "Westbound red car",
+      "lane": "main-WB",
+      "start": 0.7,
+      "color": "other"
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "rules",
+      "label": "Stops for the train",
+      "violations": {},
+      "note": "The blue car stops at the crossing line until the train clears.",
+      "isCorrect": true
+    },
+    {
+      "id": "no-yield",
+      "label": "Drives around the lights",
+      "violations": {
+        "focus": "rail"
+      },
+      "note": "The blue car ignores the flashing lights and drives onto the tracks.",
+      "isCorrect": false
+    }
+  ],
+  "avoidance": {
+    "behavior": "rules",
+    "title": "Correct behavior",
+    "text": "The blue car stops before the tracks and waits for the train to clear the crossing."
+  },
+  "railCrossings": [
+    {
+      "node": "rail-cross",
+      "x": 0.45,
+      "z": 0,
+      "rotation": 0
+    }
+  ],
+  "stopLines": [
+    {
+      "x": 0.15,
+      "z": 0.17,
+      "width": 0.035,
+      "depth": 0.25
+    },
+    {
+      "x": 0.75,
+      "z": -0.17,
+      "width": 0.035,
+      "depth": 0.25
+    }
+  ],
+  "signs": [],
+  "laneArrows": [
+    {
+      "x": -1.1,
+      "z": 0.17,
+      "heading": 0
+    },
+    {
+      "x": 1.05,
+      "z": -0.17,
+      "heading": 3.1416
+    }
+  ],
+  "scenery": {
+    "houses": [
+      {
+        "x": -1.3,
+        "z": 0.92,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.17,
+        "body": "#ead9bb",
+        "roof": "#9b6b53"
+      },
+      {
+        "x": 1.3,
+        "z": 0.92,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.18,
+        "body": "#dfe6d0",
+        "roof": "#7c6252"
+      },
+      {
+        "x": -1.3,
+        "z": -0.94,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.16,
+        "body": "#e6d8c5",
+        "roof": "#8e5e4f"
+      },
+      {
+        "x": 1.3,
+        "z": -0.94,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.18,
+        "body": "#e2dfcc",
+        "roof": "#6e6257"
+      }
+    ],
+    "trees": [
+      {
+        "x": -1.58,
+        "z": 0.55,
+        "scale": 0.82
+      },
+      {
+        "x": 1.58,
+        "z": 0.56,
+        "scale": 0.82
+      },
+      {
+        "x": -1.58,
+        "z": -0.58,
+        "scale": 0.9
+      },
+      {
+        "x": 1.58,
+        "z": -0.58,
+        "scale": 0.9
+      },
+      {
+        "x": -0.55,
+        "z": 1.2,
+        "scale": 0.72
+      },
+      {
+        "x": 0.92,
+        "z": 1.2,
+        "scale": 0.78
+      },
+      {
+        "x": -0.55,
+        "z": -1.2,
+        "scale": 0.72
+      },
+      {
+        "x": 0.92,
+        "z": -1.2,
+        "scale": 0.78
+      }
+    ]
+  }
+}

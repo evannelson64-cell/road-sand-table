@@ -10,16 +10,24 @@ import { TablePlacement } from './xr/tablePlacement.js';
 import { XrControlPanel } from './xr/controlPanel.js';
 import { XrInput } from './xr/input.js';
 
-const SCENARIO_URL = new URL('../data/scenario-two-way-stop.json', import.meta.url);
+const CATALOG_URL = new URL('../data/scenarios.json', import.meta.url);
 const MAX_STEPS_PER_RENDER = 8;
 const XR_UI_INTERVAL_MS = 250;
 
-async function loadScenario() {
-  const response = await fetch(SCENARIO_URL);
+async function fetchJson(url) {
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Scenario request failed with HTTP ${response.status}.`);
+    throw new Error(`Request failed with HTTP ${response.status}: ${url}`);
   }
   return response.json();
+}
+
+async function loadCatalog() {
+  return fetchJson(CATALOG_URL);
+}
+
+async function loadScenarioFile(entry) {
+  return fetchJson(new URL(`./${entry.file}`, CATALOG_URL));
 }
 
 function horizontalForward(vector) {
@@ -32,7 +40,9 @@ function horizontalForward(vector) {
 
 function start() {
   const canvas = document.querySelector('#scene');
+  let catalog;
   let scenario;
+  let scenarioIndex = 0;
   let simulation;
   let world;
   let ui;
@@ -40,6 +50,7 @@ function start() {
   let xrPanel;
   let xrInput;
   let placement;
+  let switchingScenario = false;
 
   let behaviorId = 'rules';
   let playing = true;
@@ -64,7 +75,12 @@ function start() {
 
   function collisionDetail() {
     const note = currentBehavior()?.note ?? '';
-    return `${note} The orange ring marks first contact. The run is paused there, so you can rewind and compare the safe choice.`;
+    const labels = simulation.collision.carIds.map((id) => {
+      const car = simulation.cars.find((entry) => entry.id === id);
+      const train = simulation.trains.find((entry) => entry.id === id);
+      return car?.label ?? train?.label ?? id;
+    });
+    return `${labels.join(' and ')} made contact. ${note} The orange ring marks first contact; rewind to compare the safe choice.`;
   }
 
   function canStepForward() {
@@ -73,6 +89,20 @@ function start() {
 
   function refreshVisuals() {
     world.updateCars(simulation.getCarSnapshots());
+    world.updateTrains(simulation.getTrainSnapshots());
+
+    const railStates = {};
+    for (const crossing of scenario.railCrossings ?? []) {
+      const node = simulation.scenario.nodesById.get(crossing.node);
+      if (node) {
+        railStates[crossing.node] = simulation.isRailCrossingActive(node);
+      }
+    }
+    world.updateProps({
+      signalStates: simulation.getSignalSnapshots(),
+      railStates,
+      time: simulation.timeSeconds,
+    });
     world.setConflict(simulation.collision?.point ?? null);
   }
 
@@ -84,6 +114,8 @@ function start() {
       playing,
       rate,
       behaviorId,
+      scenarioIndex,
+      scenarioCount: catalog?.scenarios.length ?? 1,
       locked: placement.locked,
       collision: simulation.collision,
       frameIndex: simulation.frameIndex,
@@ -408,6 +440,69 @@ function start() {
     refreshControls(Boolean(simulation.collision));
   }
 
+  async function switchScenario(id) {
+    if (switchingScenario || !catalog) {
+      return;
+    }
+    const nextIndex = catalog.scenarios.findIndex((entry) => entry.id === id);
+    if (nextIndex < 0) {
+      return;
+    }
+
+    switchingScenario = true;
+    try {
+      const entry = catalog.scenarios[nextIndex];
+      const nextScenario = await loadScenarioFile(entry);
+
+      xrInput?.cancelAll();
+      scenario = nextScenario;
+      scenarioIndex = nextIndex;
+      behaviorId = scenario.behaviors[0].id;
+      simulation = new Simulation(scenario, { behaviorId });
+      behaviorId = simulation.behaviorId;
+      world.loadScenario(scenario, simulation.scenario.cars);
+
+      placement.setLocked(false);
+      if (!xrActive) {
+        placement.exitDesktop();
+      }
+
+      collisionDialogOpen = false;
+      panelNotice = null;
+      playing = !xrActive;
+      rate = 1;
+      accumulator = 0;
+      ui.hideCollision();
+      ui.hideLesson();
+      ui.setScenario(scenario, scenarioIndex, catalog.scenarios.length);
+      ui.setBehavior(behaviorId);
+      ui.setSpeed(rate);
+      ui.setPlayback(playing);
+      xrPanel.setScenario(scenario, scenarioIndex, catalog.scenarios.length);
+      refreshControls();
+
+      document.title = `${scenario.title} · Road Sand Table`;
+      const url = new URL(window.location.href);
+      url.searchParams.set('scenario', scenario.id);
+      window.history.replaceState(null, '', url);
+    } catch (error) {
+      console.warn('Scenario could not be loaded:', error);
+      ui.showVrToast(`That scenario could not be loaded: ${error.message}`);
+    } finally {
+      switchingScenario = false;
+    }
+  }
+
+  function cycleScenario(delta) {
+    if (!catalog) {
+      return;
+    }
+    const nextIndex = (
+      scenarioIndex + delta + catalog.scenarios.length
+    ) % catalog.scenarios.length;
+    switchScenario(catalog.scenarios[nextIndex].id);
+  }
+
   async function enterVr() {
     if (!xrManager?.supported) {
       return;
@@ -503,10 +598,22 @@ function start() {
     }
   }
 
-  loadScenario()
-    .then((loadedScenario) => {
-      scenario = loadedScenario;
+  loadCatalog()
+    .then(async (loadedCatalog) => {
+      catalog = loadedCatalog;
+      if (!Array.isArray(catalog.scenarios) || catalog.scenarios.length === 0) {
+        throw new Error('The scenario catalog is empty.');
+      }
+
+      const requestedId = new URLSearchParams(window.location.search).get('scenario');
+      const initialIndex = catalog.scenarios.findIndex((entry) => (
+        entry.id === (requestedId ?? catalog.default)
+      ));
+      scenarioIndex = initialIndex >= 0 ? initialIndex : 0;
+      scenario = await loadScenarioFile(catalog.scenarios[scenarioIndex]);
+      behaviorId = scenario.behaviors[0].id;
       simulation = new Simulation(scenario, { behaviorId });
+      behaviorId = simulation.behaviorId;
       world = createWorld(canvas, scenario, simulation.scenario.cars);
 
       placement = new TablePlacement(world.tableRoot);
@@ -527,8 +634,11 @@ function start() {
         onTryAgain: tryAgain,
         onExitVr: () => xrManager?.exit(),
         onSeekFraction: seekToFraction,
+        onScenarioPrev: () => cycleScenario(-1),
+        onScenarioNext: () => cycleScenario(1),
       });
       world.scene.add(xrPanel.root);
+      xrPanel.setScenario(scenario, scenarioIndex, catalog.scenarios.length);
 
       xrInput = new XrInput({
         renderer: world.renderer,
@@ -556,7 +666,7 @@ function start() {
         },
       });
 
-      ui = new UI(scenario, {
+      ui = new UI(scenario, catalog.scenarios, {
         onBehavior: setBehavior,
         onPlayPause: () => (playing ? pause() : play()),
         onStepBack: stepBack,
@@ -569,8 +679,9 @@ function start() {
         onScrubStart: pause,
         onSeek: seekToFrame,
         onEnterVr: enterVr,
+        onScenario: switchScenario,
       });
-
+      ui.setScenario(scenario, scenarioIndex, catalog.scenarios.length);
       ui.setBehavior(behaviorId);
       ui.setSpeed(rate);
       ui.setPlayback(playing);
@@ -588,6 +699,10 @@ function start() {
       window.__sandTable = {
         getState: () => ({
           ready: true,
+          scenarioId: scenario.id,
+          scenarioTitle: scenario.title,
+          scenarioIndex,
+          scenarioCount: catalog.scenarios.length,
           frameIndex: simulation.frameIndex,
           frameCount: simulation.frameCount,
           time: simulation.timeSeconds,
@@ -598,6 +713,8 @@ function start() {
             ? structuredClone(simulation.collision)
             : null,
           cars: simulation.getCarSnapshots(),
+          trains: simulation.getTrainSnapshots(),
+          signals: simulation.getSignalSnapshots(),
           xr: {
             supported: xrManager?.supported ?? false,
             active: xrActive,
@@ -629,6 +746,8 @@ function start() {
                 'scale-down',
                 'reset-table',
                 'exit-vr',
+                'scenario-prev',
+                'scenario-next',
                 'behavior-rules',
                 'behavior-no-yield',
                 'replay-slow',
@@ -656,6 +775,8 @@ function start() {
         stepForward,
         seekFrame: seekToFrame,
         setSpeed: changeSpeed,
+        loadScenario: switchScenario,
+        getScenarioList: () => catalog.scenarios.map((entry) => ({ ...entry })),
         enterVr,
         exitVr: () => xrManager?.exit(),
         resetTable: resetTablePosition,

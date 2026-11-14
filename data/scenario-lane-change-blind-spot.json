@@ -1,0 +1,326 @@
+{
+  "id": "lane-change-blind-spot",
+  "title": "Blind spot",
+  "subtitle": "Lane change on a multi-lane road",
+  "stageNote": "Stage 3 scenario tile",
+  "table": {
+    "width": 3.8,
+    "depth": 3.0,
+    "playWidth": 3.62,
+    "playDepth": 2.82
+  },
+  "bounds": {
+    "xMin": -1.81,
+    "xMax": 1.81,
+    "zMin": -1.41,
+    "zMax": 1.41
+  },
+  "caption": {
+    "rule": "Before changing lanes, check the mirror and the blind spot over your shoulder, then signal and move smoothly.",
+    "risk": "The blue car changes into the left lane while the red car is alongside in its blind spot.",
+    "habit": "Mirror, signal, shoulder check, then move only when the target lane is clear."
+  },
+  "nodes": [
+    {
+      "id": "lane-gap",
+      "x": -0.35,
+      "z": 0.18,
+      "half": 0.18,
+      "junction": false,
+      "controls": {
+        "west": "yield"
+      },
+      "yield": {
+        "west": [
+          "lane-EB-left"
+        ]
+      }
+    }
+  ],
+  "roads": [
+    {
+      "id": "boulevard",
+      "points": [
+        [
+          -1.78,
+          0
+        ],
+        [
+          1.78,
+          0
+        ]
+      ],
+      "width": 1.16,
+      "centerLine": "dashed-yellow",
+      "laneDividers": [
+        -0.36,
+        0.36
+      ]
+    }
+  ],
+  "lanes": [
+    {
+      "id": "lane-EB-left",
+      "node": "lane-gap",
+      "approach": "west",
+      "speed": 0.24,
+      "points": [
+        [
+          -1.62,
+          0.18
+        ],
+        [
+          1.62,
+          0.18
+        ]
+      ],
+      "control": "none"
+    },
+    {
+      "id": "lane-EB-right",
+      "speed": 0.24,
+      "smooth": true,
+      "samplesPerSegment": 14,
+      "stopAt": 0.92,
+      "node": "lane-gap",
+      "approach": "west",
+      "points": [
+        [
+          -1.62,
+          0.54
+        ],
+        [
+          -0.78,
+          0.54
+        ],
+        [
+          -0.58,
+          0.52
+        ],
+        [
+          -0.34,
+          0.34
+        ],
+        [
+          -0.16,
+          0.22
+        ],
+        [
+          0.15,
+          0.18
+        ],
+        [
+          1.05,
+          0.18
+        ]
+      ]
+    },
+    {
+      "id": "lane-WB-left",
+      "speed": 0.27,
+      "points": [
+        [
+          1.62,
+          -0.18
+        ],
+        [
+          -1.62,
+          -0.18
+        ]
+      ]
+    },
+    {
+      "id": "lane-WB-right",
+      "speed": 0.25,
+      "points": [
+        [
+          1.62,
+          -0.54
+        ],
+        [
+          -1.62,
+          -0.54
+        ]
+      ]
+    }
+  ],
+  "cars": [
+    {
+      "id": "focus",
+      "label": "Blue lane-changing car",
+      "lane": "lane-EB-right",
+      "start": 0,
+      "color": "focus"
+    },
+    {
+      "id": "blind",
+      "label": "Red car in the blind spot",
+      "lane": "lane-EB-left",
+      "start": 0,
+      "color": "other"
+    },
+    {
+      "id": "oncoming",
+      "label": "Westbound red car",
+      "lane": "lane-WB-right",
+      "start": 0.45,
+      "color": "other"
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "rules",
+      "label": "Checks the blind spot",
+      "violations": {},
+      "note": "The blue car waits for the red car beside it to pass before changing lanes.",
+      "isCorrect": true
+    },
+    {
+      "id": "no-yield",
+      "label": "Changes without looking",
+      "violations": {
+        "focus": "yield"
+      },
+      "note": "The blue car moves into the left lane while the red car is still alongside.",
+      "isCorrect": false
+    }
+  ],
+  "avoidance": {
+    "behavior": "rules",
+    "title": "Correct behavior",
+    "text": "The blue car mirrors, signals and shoulder-checks, sees the red car, and changes lanes after it passes."
+  },
+  "stopLines": [
+    {
+      "x": -0.62,
+      "z": 0.54,
+      "width": 0.035,
+      "depth": 0.28
+    }
+  ],
+  "signs": [],
+  "laneArrows": [
+    {
+      "x": -1.15,
+      "z": 0.18,
+      "heading": 0
+    },
+    {
+      "x": 0.15,
+      "z": 0.18,
+      "heading": 0
+    },
+    {
+      "x": 1.05,
+      "z": 0.18,
+      "heading": 0
+    },
+    {
+      "x": -1.15,
+      "z": 0.54,
+      "heading": 0
+    },
+    {
+      "x": -0.2,
+      "z": 0.54,
+      "heading": 0
+    },
+    {
+      "x": 1.05,
+      "z": 0.54,
+      "heading": 0
+    },
+    {
+      "x": -1.05,
+      "z": -0.18,
+      "heading": 3.1416
+    },
+    {
+      "x": 0.15,
+      "z": -0.18,
+      "heading": 3.1416
+    },
+    {
+      "x": -1.05,
+      "z": -0.54,
+      "heading": 3.1416
+    },
+    {
+      "x": 0.15,
+      "z": -0.54,
+      "heading": 3.1416
+    }
+  ],
+  "scenery": {
+    "houses": [
+      {
+        "x": -1.28,
+        "z": -0.93,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.17,
+        "body": "#ead9bb",
+        "roof": "#9b6b53"
+      },
+      {
+        "x": 1.28,
+        "z": -0.94,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.18,
+        "body": "#dfe6d0",
+        "roof": "#7c6252"
+      },
+      {
+        "x": -1.27,
+        "z": 0.94,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.16,
+        "body": "#e6d8c5",
+        "roof": "#8e5e4f"
+      },
+      {
+        "x": 1.27,
+        "z": 0.94,
+        "w": 0.34,
+        "d": 0.27,
+        "h": 0.18,
+        "body": "#e2dfcc",
+        "roof": "#6e6257"
+      }
+    ],
+    "trees": [
+      {
+        "x": -1.62,
+        "z": 0.62,
+        "scale": 0.82
+      },
+      {
+        "x": 1.62,
+        "z": 0.62,
+        "scale": 0.82
+      },
+      {
+        "x": -1.62,
+        "z": -0.6,
+        "scale": 0.88
+      },
+      {
+        "x": 1.62,
+        "z": -0.6,
+        "scale": 0.88
+      },
+      {
+        "x": -0.6,
+        "z": 1.2,
+        "scale": 0.7
+      },
+      {
+        "x": 0.6,
+        "z": 1.2,
+        "scale": 0.75
+      }
+    ]
+  }
+}

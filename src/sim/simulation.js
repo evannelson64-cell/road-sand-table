@@ -1,7 +1,13 @@
 // Deterministic, fixed-step traffic simulation.
 // Rendering reads this state but never writes to it.
 
-import { buildPolyline, closestPointOnPath, orientedBoxesOverlap, poseAt } from './geometry.js';
+import {
+  buildPolyline,
+  closestPointOnPath,
+  orientedBoxesOverlap,
+  poseAt,
+  smoothPolyline,
+} from './geometry.js';
 import { ReplayRecorder } from './recorder.js';
 
 export const FIXED_DT = 1 / 60;
@@ -15,6 +21,13 @@ const STOP_HOLD_SECONDS = 0.8;
 const YIELD_LOOKAHEAD = 1.7;
 const YIELD_CLEARANCE = 0.55;
 const FOLLOW_LOOKAHEAD = 0.9;
+const ALL_WAY_TIE_WINDOW = 0.15;
+const RIGHT_OF_APPROACH = {
+  west: 'south',
+  south: 'east',
+  east: 'north',
+  north: 'west',
+};
 
 function moveTowards(current, target, delta, acceleration, deceleration) {
   if (target > current) {
@@ -36,7 +49,11 @@ export function prepareScenario(rawScenario) {
   const lanesById = new Map();
 
   for (const rawLane of rawScenario.lanes) {
-    const path = buildPolyline(rawLane.points.map(([x, z]) => ({ x, z })));
+    const controlPoints = rawLane.points.map(([x, z]) => ({ x, z }));
+    const sampledPoints = rawLane.smooth
+      ? smoothPolyline(controlPoints, rawLane.samplesPerSegment ?? 12)
+      : controlPoints;
+    const path = buildPolyline(sampledPoints);
     const node = nodesById.get(rawLane.node);
     let nodeS = null;
 
@@ -63,20 +80,30 @@ function buildInitialCar(carDefinition, lane, behavior, index) {
   let stop = null;
 
   if (lane.node && lane.nodeS !== null) {
-    const control = lane.node.controls?.[lane.approach] ?? 'none';
-    const hasStopControl = control === 'stop' || control === 'yield';
+    const control = lane.control ?? lane.node.controls?.[lane.approach] ?? 'none';
+    const hasStopControl = ['stop', 'yield', 'signal', 'rail'].includes(control);
 
     if (hasStopControl) {
-      const stopDistance = Math.max(0, lane.nodeS - lane.node.half - STOP_LINE_SETBACK);
+      const stopDistance = lane.stopAt !== undefined
+        ? Math.max(0, lane.stopAt)
+        : Math.max(0, lane.nodeS - lane.node.half - STOP_LINE_SETBACK);
+      const hold = control === 'stop'
+        ? STOP_HOLD_SECONDS
+        : control === 'yield'
+          ? 0.3
+          : 0;
       stop = {
         nodeId: lane.node.id,
+        node: lane.node,
+        approach: lane.approach,
         control,
         s: stopDistance,
-        hold: control === 'stop' ? STOP_HOLD_SECONDS : 0.35,
+        hold,
         yieldTo: lane.node.yield?.[lane.approach] ?? [],
         arrived: false,
         released: false,
         holdTimer: 0,
+        arrivedAt: null,
       };
     }
   }
@@ -91,6 +118,8 @@ function buildInitialCar(carDefinition, lane, behavior, index) {
     speed: lane.speed,
     stop,
     ignoreYield: behavior.violations?.[carDefinition.id] === 'yield',
+    ignoreAllWay: behavior.violations?.[carDefinition.id] === 'allway',
+    ignoreRail: behavior.violations?.[carDefinition.id] === 'rail',
     length: CAR_LENGTH,
     width: CAR_WIDTH,
   };
@@ -125,11 +154,235 @@ export class Simulation {
       }
       return buildInitialCar(definition, lane, behavior, index);
     });
+
+    this.trains = (this.scenario.trains ?? []).map((definition) => {
+      const lane = this.scenario.lanesById.get(definition.lane);
+      if (!lane) {
+        throw new Error(`Train ${definition.id} references missing lane ${definition.lane}`);
+      }
+      return {
+        id: definition.id,
+        label: definition.label ?? definition.id,
+        lane,
+        s: Math.max(0, Math.min(lane.path.length, definition.start ?? 0)),
+        speed: definition.speed ?? 0.2,
+        length: definition.length ?? 0.9,
+        width: definition.width ?? 0.22,
+        color: definition.color ?? 'train',
+      };
+    });
+
     this.recorder.reset(this.createSnapshot());
   }
 
   setBehavior(behaviorId) {
     this.reset(behaviorId);
+  }
+
+  getSignalState(node, approach, time = this.time) {
+    const phases = node?.signal?.phases;
+    if (!Array.isArray(phases) || phases.length === 0) {
+      return null;
+    }
+
+    const period = phases.reduce((total, phase) => total + phase.duration, 0);
+    if (period <= 0) {
+      return null;
+    }
+
+    let localTime = (time + (node.signal.offset ?? 0)) % period;
+    if (localTime < 0) {
+      localTime += period;
+    }
+
+    for (const phase of phases) {
+      if (localTime < phase.duration) {
+        if (phase.green?.includes(approach)) {
+          return 'green';
+        }
+        if (phase.yellow?.includes(approach)) {
+          return 'yellow';
+        }
+        return 'red';
+      }
+      localTime -= phase.duration;
+    }
+
+    return 'red';
+  }
+
+  getSignalSnapshots() {
+    const snapshot = {};
+    for (const node of this.scenario.nodes) {
+      if (!node.signal) {
+        continue;
+      }
+      snapshot[node.id] = {};
+      for (const approach of Object.keys(node.controls ?? {})) {
+        if (node.controls[approach] === 'signal') {
+          snapshot[node.id][approach] = this.getSignalState(node, approach);
+        }
+      }
+    }
+    return snapshot;
+  }
+
+  isRailCrossingActive(node) {
+    if (!node?.railroad) {
+      return false;
+    }
+    const activationDistance = node.railroad.activationDistance ?? 1.0;
+    for (const train of this.trains) {
+      const pose = poseAt(train.lane.path, train.s);
+      const distance = Math.hypot(pose.x - node.x, pose.z - node.z);
+      if (distance < activationDistance + train.length / 2) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  canProceedAllWay(car) {
+    const nodeId = car.stop.nodeId;
+    const waiting = this.cars
+      .filter((other) => (
+        other.stop?.nodeId === nodeId &&
+        other.stop.arrived &&
+        !other.stop.released
+      ))
+      .sort((a, b) => {
+        const arrivalDelta = (a.stop.arrivedAt ?? Infinity) - (b.stop.arrivedAt ?? Infinity);
+        if (Math.abs(arrivalDelta) > ALL_WAY_TIE_WINDOW) {
+          return arrivalDelta;
+        }
+
+        // Near-simultaneous arrivals yield to the car on the right.
+        if (RIGHT_OF_APPROACH[a.stop.approach] === b.stop.approach) {
+          return 1;
+        }
+        if (RIGHT_OF_APPROACH[b.stop.approach] === a.stop.approach) {
+          return -1;
+        }
+        return arrivalDelta || a.id.localeCompare(b.id);
+      });
+
+    if (waiting.length === 0 || waiting[0].id !== car.id) {
+      return false;
+    }
+
+    for (const other of this.cars) {
+      if (other.id === car.id || other.stop?.nodeId !== nodeId || !other.stop?.released) {
+        continue;
+      }
+      const distancePast = other.s - other.lane.nodeS;
+      if (distancePast < 0.85) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  hasRoundaboutConflict(car) {
+    const roundabout = car.stop.node?.roundabout;
+    if (!roundabout) {
+      return false;
+    }
+
+    const direction = {
+      north: { x: 0, z: -1 },
+      south: { x: 0, z: 1 },
+      east: { x: 1, z: 0 },
+      west: { x: -1, z: 0 },
+    }[car.stop.approach];
+    if (!direction) {
+      return false;
+    }
+
+    const entryX = car.stop.node.x + direction.x * roundabout.radius;
+    const entryZ = car.stop.node.z + direction.z * roundabout.radius;
+    const threshold = roundabout.conflictRadius ?? 0.36;
+
+    for (const other of this.cars) {
+      if (other.id === car.id || !other.lane.roundabout) {
+        continue;
+      }
+      const pose = this.getCarPose(other);
+      if (Math.hypot(pose.x - entryX, pose.z - entryZ) < threshold) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  shouldStopForControl(car) {
+    if (!car.stop || car.stop.released) {
+      return false;
+    }
+
+    const { control, node, approach } = car.stop;
+
+    if (control === 'signal') {
+      const state = this.getSignalState(node, approach);
+      if (state !== 'green') {
+        return true;
+      }
+      return !car.ignoreYield && this.hasConflictingTraffic(car);
+    }
+
+    if (control === 'rail') {
+      return !car.ignoreRail && this.isRailCrossingActive(node);
+    }
+
+    if (control === 'stop') {
+      return true;
+    }
+
+    if (control === 'yield') {
+      if (car.ignoreYield) {
+        return false;
+      }
+      // Teaching yield signs as a deliberate pause at the line makes the gap
+      // check legible and keeps roundabout/ramp geometry predictable.
+      return true;
+    }
+
+    return false;
+  }
+
+  canProceedFromStop(car) {
+    if (!car.stop || car.stop.holdTimer > 0) {
+      return false;
+    }
+
+    const { control, node, approach } = car.stop;
+
+    if (control === 'signal') {
+      if (this.getSignalState(node, approach) !== 'green') {
+        return false;
+      }
+      return car.ignoreYield || !this.hasConflictingTraffic(car);
+    }
+
+    if (control === 'rail') {
+      return car.ignoreRail || !this.isRailCrossingActive(node);
+    }
+
+    if (node.allWayStop) {
+      return car.ignoreAllWay || this.canProceedAllWay(car);
+    }
+
+    if (control === 'yield') {
+      if (car.ignoreYield) {
+        return true;
+      }
+      if (node.roundabout) {
+        return !this.hasRoundaboutConflict(car);
+      }
+      return !this.hasConflictingTraffic(car);
+    }
+
+    return car.ignoreYield || !this.hasConflictingTraffic(car);
   }
 
   /** True when another car on a lane we must yield to is approaching or inside. */
@@ -206,32 +459,42 @@ export class Simulation {
       targetSpeed = Math.min(targetSpeed, followingLimit);
     }
 
+    let brakingForStop = false;
+
     if (car.stop && !car.stop.released) {
-      if (!car.stop.arrived) {
-        const gapToStop = car.stop.s - car.s;
+      // A green signal, an empty yield or a cleared crossing can be taken
+      // without stopping. Once the nose is past the stop point, commit.
+      if (!car.stop.arrived && car.s > car.stop.s + 0.02) {
+        car.stop.released = true;
+      } else {
+        const mustStop = this.shouldStopForControl(car);
 
-        if (gapToStop <= 0.02) {
-          car.s = car.stop.s;
-          car.speed = 0;
-          car.stop.arrived = true;
-          car.stop.holdTimer = car.stop.hold;
-          targetSpeed = 0;
-        } else {
-          targetSpeed = Math.min(targetSpeed, speedForGap(Math.max(0, gapToStop - 0.008)));
+        if (!car.stop.arrived) {
+          if (mustStop) {
+            brakingForStop = true;
+            const gapToStop = car.stop.s - car.s;
+
+            if (gapToStop <= 0.02) {
+              car.s = car.stop.s;
+              car.speed = 0;
+              car.stop.arrived = true;
+              car.stop.arrivedAt = this.time;
+              car.stop.holdTimer = car.stop.hold;
+              targetSpeed = 0;
+            } else {
+              targetSpeed = Math.min(targetSpeed, speedForGap(Math.max(0, gapToStop - 0.008)));
+            }
+          }
         }
-      }
 
-      if (car.stop.arrived) {
-        car.stop.holdTimer = Math.max(0, car.stop.holdTimer - dt);
+        if (car.stop.arrived) {
+          car.stop.holdTimer = Math.max(0, car.stop.holdTimer - dt);
 
-        const mayProceed =
-          car.stop.holdTimer <= 0 &&
-          (car.ignoreYield || !this.hasConflictingTraffic(car));
-
-        if (mayProceed) {
-          car.stop.released = true;
-        } else {
-          targetSpeed = 0;
+          if (this.canProceedFromStop(car)) {
+            car.stop.released = true;
+          } else {
+            targetSpeed = 0;
+          }
         }
       }
     }
@@ -246,11 +509,12 @@ export class Simulation {
 
     car.s += car.speed * dt;
 
-    // Never overshoot the stop line, even with a coarse accumulator step.
-    if (car.stop && !car.stop.arrived && car.s >= car.stop.s) {
+    // Never overshoot a stop line that the car committed to braking for.
+    if (car.stop && !car.stop.arrived && brakingForStop && car.s >= car.stop.s) {
       car.s = car.stop.s;
       car.speed = 0;
       car.stop.arrived = true;
+      car.stop.arrivedAt = this.time;
       car.stop.holdTimer = car.stop.hold;
     }
 
@@ -258,6 +522,10 @@ export class Simulation {
       car.s = car.lane.path.length;
       car.speed = 0;
     }
+  }
+
+  updateTrain(train, dt) {
+    train.s = Math.min(train.lane.path.length, train.s + train.speed * dt);
   }
 
   detectCollision() {
@@ -283,6 +551,25 @@ export class Simulation {
       }
     }
 
+    for (const train of this.trains) {
+      const trainPose = this.getTrainPose(train);
+      for (const car of this.cars) {
+        const carPose = this.getCarPose(car);
+        const result = orientedBoxesOverlap(
+          { ...carPose, length: car.length, width: car.width },
+          { ...trainPose, length: train.length, width: train.width },
+        );
+        if (result.hit) {
+          return {
+            carIds: [car.id, train.id],
+            point: result.point,
+            time: this.time,
+            depth: result.depth,
+          };
+        }
+      }
+    }
+
     return null;
   }
 
@@ -293,6 +580,9 @@ export class Simulation {
 
     for (const car of this.cars) {
       this.updateCar(car, this.fixedDt);
+    }
+    for (const train of this.trains) {
+      this.updateTrain(train, this.fixedDt);
     }
 
     this.time += this.fixedDt;
@@ -314,8 +604,14 @@ export class Simulation {
               arrived: car.stop.arrived,
               released: car.stop.released,
               holdTimer: car.stop.holdTimer,
+              arrivedAt: car.stop.arrivedAt,
             }
           : null,
+      })),
+      trains: this.trains.map((train) => ({
+        id: train.id,
+        s: train.s,
+        speed: train.speed,
       })),
       collision: this.collision ? structuredClone(this.collision) : null,
     };
@@ -340,6 +636,14 @@ export class Simulation {
         car.stop.arrived = carSnapshot.stop.arrived;
         car.stop.released = carSnapshot.stop.released;
         car.stop.holdTimer = carSnapshot.stop.holdTimer;
+        car.stop.arrivedAt = carSnapshot.stop.arrivedAt;
+      }
+    }
+
+    for (const train of this.trains) {
+      const trainSnapshot = snapshot.trains?.find((entry) => entry.id === train.id);
+      if (trainSnapshot) {
+        train.s = trainSnapshot.s;
       }
     }
   }
@@ -395,6 +699,22 @@ export class Simulation {
       color: car.color,
       pose: this.getCarPose(car),
       speed: car.speed,
+    }));
+  }
+
+  getTrainPose(train) {
+    return poseAt(train.lane.path, train.s);
+  }
+
+  getTrainSnapshots() {
+    return this.trains.map((train) => ({
+      id: train.id,
+      label: train.label,
+      color: train.color,
+      pose: this.getTrainPose(train),
+      length: train.length,
+      width: train.width,
+      speed: train.speed,
     }));
   }
 

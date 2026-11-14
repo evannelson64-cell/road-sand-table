@@ -5,7 +5,9 @@ import { createTabletop } from './tabletop.js';
 import { createRoads } from './roads.js';
 import { createScenery } from './scenery.js';
 import { createCarFleet } from './cars.js';
+import { createTrainFleet } from './trains.js';
 import { createCornerHandles } from './cornerHandles.js';
+import { createScenarioProps } from './props.js';
 
 export function createWorld(canvas, scenario, cars) {
   const renderer = new THREE.WebGLRenderer({
@@ -69,37 +71,76 @@ export function createWorld(canvas, scenario, cars) {
   fillLight.position.set(4, 3, -4);
   scene.add(fillLight);
 
-  // Everything that belongs to the table lives under one transformable root.
-  // In VR this is scaled to a roughly 1.06 m wide miniature table.
+  // Everything that belongs to the table lives under one persistent
+  // transformable root. Loading a scenario swaps its children, preserving the
+  // user's room placement and the four-corner handles' transform.
   const tableRoot = new THREE.Group();
   tableRoot.name = 'table-root';
-  tableRoot.add(createTabletop(scenario));
-  tableRoot.add(createRoads(scenario));
-  tableRoot.add(createScenery(scenario));
-
-  const fleet = createCarFleet(cars);
-  tableRoot.add(fleet.group);
-
-  const cornerHandles = createCornerHandles(scenario);
-  tableRoot.add(cornerHandles.group);
-
-  const conflictRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.13, 0.011, 6, 32),
-    new THREE.MeshBasicMaterial({
-      color: '#ff8a3d',
-      transparent: true,
-      opacity: 0.98,
-      depthWrite: false,
-      depthTest: false,
-    }),
-  );
-  conflictRing.rotation.x = -Math.PI / 2;
-  conflictRing.position.y = 0.025;
-  conflictRing.visible = false;
-  conflictRing.renderOrder = 6;
-  tableRoot.add(conflictRing);
-
   scene.add(tableRoot);
+
+  let fleet = null;
+  let trainFleet = null;
+  let cornerHandles = [];
+  let props = null;
+  let conflictRing = null;
+
+  function disposeContent(root) {
+    root.traverse((object) => {
+      if (object.geometry) {
+        object.geometry.dispose();
+      }
+      if (object.material) {
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        for (const material of materials) {
+          material.dispose();
+        }
+      }
+    });
+  }
+
+  function loadScenario(nextScenario, cars) {
+    for (const child of [...tableRoot.children]) {
+      tableRoot.remove(child);
+      disposeContent(child);
+    }
+
+    tableRoot.add(createTabletop(nextScenario));
+    tableRoot.add(createRoads(nextScenario));
+    tableRoot.add(createScenery(nextScenario));
+
+    fleet = createCarFleet(cars);
+    tableRoot.add(fleet.group);
+
+    trainFleet = createTrainFleet(nextScenario.trains ?? []);
+    tableRoot.add(trainFleet.group);
+
+    const handlePack = createCornerHandles(nextScenario);
+    cornerHandles = handlePack.handles;
+    tableRoot.add(handlePack.group);
+
+    props = createScenarioProps(nextScenario);
+    tableRoot.add(props.group);
+
+    conflictRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.13, 0.011, 6, 32),
+      new THREE.MeshBasicMaterial({
+        color: '#ff8a3d',
+        transparent: true,
+        opacity: 0.98,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
+    conflictRing.rotation.x = -Math.PI / 2;
+    conflictRing.position.y = 0.025;
+    conflictRing.visible = false;
+    conflictRing.renderOrder = 6;
+    tableRoot.add(conflictRing);
+  }
+
+  loadScenario(scenario, cars);
 
   // A quiet virtual floor gives the floating table a room-scale reference in
   // immersive mode. It is hidden on desktop, where CSS supplies the backdrop.
@@ -194,14 +235,28 @@ export function createWorld(canvas, scenario, cars) {
     camera,
     controls,
     tableRoot,
-    cornerHandles: cornerHandles.handles,
-    conflictRing,
+    get cornerHandles() {
+      return cornerHandles;
+    },
+    get conflictRing() {
+      return conflictRing;
+    },
     enterXrMode,
     exitXrMode,
+    loadScenario,
     updateCars(snapshots) {
-      fleet.update(snapshots);
+      fleet?.update(snapshots);
+    },
+    updateTrains(snapshots) {
+      trainFleet?.update(snapshots);
+    },
+    updateProps(data) {
+      props?.update(data);
     },
     setConflict(point) {
+      if (!conflictRing) {
+        return;
+      }
       if (!point) {
         conflictRing.visible = false;
         return;

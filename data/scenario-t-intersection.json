@@ -1,0 +1,283 @@
+{
+  "id": "t-intersection",
+  "title": "T-intersection",
+  "subtitle": "Oak Lane ends at Main Street",
+  "stageNote": "Stage 3 scenario tile",
+  "table": {
+    "width": 3.8,
+    "depth": 3.0,
+    "playWidth": 3.62,
+    "playDepth": 2.82
+  },
+  "bounds": {
+    "xMin": -1.81,
+    "xMax": 1.81,
+    "zMin": -1.41,
+    "zMax": 1.41
+  },
+  "caption": {
+    "rule": "At a T-intersection, the road that ends yields to the through road.",
+    "risk": "The blue car turns left across the near eastbound lane before the red car has passed.",
+    "habit": "Stop at the line, scan both directions, and finish the turn only when both lanes are clear."
+  },
+  "nodes": [
+    {
+      "id": "tee",
+      "x": 0,
+      "z": 0,
+      "half": 0.35,
+      "controls": {
+        "south": "stop",
+        "east": "none",
+        "west": "none"
+      },
+      "yield": {
+        "south": [
+          "main-EB",
+          "main-WB"
+        ]
+      }
+    }
+  ],
+  "roads": [
+    {
+      "id": "main",
+      "points": [
+        [
+          -1.78,
+          0
+        ],
+        [
+          1.78,
+          0
+        ]
+      ],
+      "width": 0.72,
+      "marking": "dashed-yellow"
+    },
+    {
+      "id": "oak",
+      "points": [
+        [
+          0,
+          1.38
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "width": 0.62,
+      "marking": "dashed-yellow"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "main-EB",
+      "node": "tee",
+      "approach": "west",
+      "speed": 0.28,
+      "points": [
+        [
+          -1.62,
+          0.18
+        ],
+        [
+          1.62,
+          0.18
+        ]
+      ]
+    },
+    {
+      "id": "main-WB",
+      "node": "tee",
+      "approach": "east",
+      "speed": 0.26,
+      "points": [
+        [
+          1.62,
+          -0.18
+        ],
+        [
+          -1.62,
+          -0.18
+        ]
+      ]
+    },
+    {
+      "id": "oak-SB-left",
+      "node": "tee",
+      "approach": "south",
+      "speed": 0.2,
+      "smooth": true,
+      "samplesPerSegment": 14,
+      "points": [
+        [
+          0.18,
+          1.24
+        ],
+        [
+          0.18,
+          0.54
+        ],
+        [
+          0.12,
+          0.29
+        ],
+        [
+          -0.12,
+          0.07
+        ],
+        [
+          -0.4,
+          -0.1
+        ],
+        [
+          -0.68,
+          -0.18
+        ],
+        [
+          -1.62,
+          -0.18
+        ]
+      ]
+    }
+  ],
+  "cars": [
+    {
+      "id": "focus",
+      "label": "Blue left-turning car",
+      "lane": "oak-SB-left",
+      "start": 0,
+      "color": "focus"
+    },
+    {
+      "id": "east",
+      "label": "Red eastbound car",
+      "lane": "main-EB",
+      "start": 0,
+      "color": "other"
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "rules",
+      "label": "Yields to Main Street",
+      "violations": {},
+      "note": "The blue car waits for both Main Street directions to clear.",
+      "isCorrect": true
+    },
+    {
+      "id": "no-yield",
+      "label": "Turns across traffic",
+      "violations": {
+        "focus": "yield"
+      },
+      "note": "The blue car turns left in front of the eastbound red car.",
+      "isCorrect": false
+    }
+  ],
+  "avoidance": {
+    "behavior": "rules",
+    "title": "Correct behavior",
+    "text": "The blue car waits for the eastbound car to pass, checks the far lane, then completes the turn."
+  },
+  "stopLines": [
+    {
+      "x": 0.18,
+      "z": 0.49,
+      "width": 0.27,
+      "depth": 0.035
+    }
+  ],
+  "signs": [
+    {
+      "type": "stop",
+      "x": 0.55,
+      "z": 0.55,
+      "facing": "south"
+    }
+  ],
+  "scenery": {
+    "houses": [
+      {
+        "x": -1.24,
+        "z": 0.95,
+        "w": 0.38,
+        "d": 0.3,
+        "h": 0.17,
+        "body": "#ead9bb",
+        "roof": "#9b6b53"
+      },
+      {
+        "x": 1.28,
+        "z": 0.93,
+        "w": 0.35,
+        "d": 0.29,
+        "h": 0.19,
+        "body": "#dfe6d0",
+        "roof": "#7c6252"
+      },
+      {
+        "x": -1.28,
+        "z": -0.98,
+        "w": 0.36,
+        "d": 0.3,
+        "h": 0.16,
+        "body": "#e6d8c5",
+        "roof": "#8e5e4f"
+      },
+      {
+        "x": 1.24,
+        "z": -0.96,
+        "w": 0.38,
+        "d": 0.28,
+        "h": 0.18,
+        "body": "#e2dfcc",
+        "roof": "#6e6257"
+      }
+    ],
+    "trees": [
+      {
+        "x": -1.58,
+        "z": 0.57,
+        "scale": 0.9
+      },
+      {
+        "x": -1.53,
+        "z": -0.6,
+        "scale": 0.8
+      },
+      {
+        "x": 1.58,
+        "z": 0.58,
+        "scale": 0.85
+      },
+      {
+        "x": 1.58,
+        "z": -0.6,
+        "scale": 0.92
+      },
+      {
+        "x": -0.9,
+        "z": 1.2,
+        "scale": 0.72
+      },
+      {
+        "x": 0.92,
+        "z": 1.2,
+        "scale": 0.8
+      },
+      {
+        "x": -0.8,
+        "z": -1.2,
+        "scale": 0.7
+      },
+      {
+        "x": 0.92,
+        "z": -1.2,
+        "scale": 0.84
+      }
+    ]
+  }
+}
