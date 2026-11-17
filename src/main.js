@@ -9,10 +9,16 @@ import { XrSessionManager } from './xr/session.js';
 import { TablePlacement } from './xr/tablePlacement.js';
 import { XrControlPanel } from './xr/controlPanel.js';
 import { XrInput } from './xr/input.js';
+import { buildRoadNetwork } from './map/graph.js';
+import { MapTraffic } from './map/traffic.js';
+import { createMapView } from './scene/mapScene.js';
 
 const CATALOG_URL = new URL('../data/scenarios.json', import.meta.url);
+const MAP_URL = new URL('../data/maps/healdsburg-plaza.json', import.meta.url);
 const MAX_STEPS_PER_RENDER = 8;
 const XR_UI_INTERVAL_MS = 250;
+const MAP_FIXED_DT = 1 / 60;
+const MAP_DEFAULT_CARS = 64;
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -66,6 +72,19 @@ function start() {
   let handTracking = false;
   let viewerPose = null;
   let panelNotice = null;
+
+  let mode = 'sandbox';
+  let mapView = null;
+  let mapTraffic = null;
+  let mapDocument = null;
+  let mapNetwork = null;
+  let mapLoading = false;
+  let mapPaused = false;
+  let mapRate = 1;
+  let mapCarCount = MAP_DEFAULT_CARS;
+  let mapAccumulator = 0;
+  let lastMapUiUpdate = 0;
+  let sandboxWasPlaying = true;
 
   const panelPosition = new THREE.Vector3();
 
@@ -440,6 +459,215 @@ function start() {
     refreshControls(Boolean(simulation.collision));
   }
 
+  function publishRoadMapSurface() {
+    if (!mapView || !mapTraffic || !mapDocument) {
+      return;
+    }
+    window.__roadMap = {
+      getState: () => ({
+        ready: true,
+        active: mode === 'map',
+        id: mapDocument.id,
+        name: mapDocument.name,
+        place: mapDocument.place,
+        attribution: mapDocument.attribution,
+        paused: mapPaused,
+        rate: mapRate,
+        following: mapView.followId,
+        targetCars: mapCarCount,
+        stats: mapTraffic.getStats(),
+        network: {
+          edges: mapNetwork.edges.length,
+          lanes: mapNetwork.lanes.length,
+          nodes: mapNetwork.nodes.length,
+          signals: mapDocument.signals.length,
+          stops: mapDocument.stops.length,
+          buildings: mapDocument.buildings.length,
+          areas: mapDocument.areas.length,
+        },
+        camera: {
+          position: mapView.camera.position.toArray(),
+          target: mapView.controls.target.toArray(),
+          distance: mapView.camera.position.distanceTo(mapView.controls.target),
+        },
+        render: {
+          calls: world.renderer.info.render.calls,
+          triangles: world.renderer.info.render.triangles,
+        },
+      }),
+      getCars: () => mapTraffic.getSnapshots(),
+      follow: followMapCar,
+      stopFollowing: () => {
+        mapView?.stopFollowing();
+        ui.setFollowing(null);
+      },
+      resetView: resetMapView,
+      setDensity: setMapDensity,
+      setRate: setMapRate,
+      pause: () => setMapPaused(true),
+      play: () => setMapPaused(false),
+    };
+    window.__roadMapReady = true;
+  }
+
+  async function ensureMapLoaded() {
+    if (mapView) {
+      return true;
+    }
+    if (mapLoading) {
+      return false;
+    }
+    mapLoading = true;
+    ui.showLoading('Charting real streets from OpenStreetMap…');
+    try {
+      mapDocument = await fetchJson(MAP_URL);
+      if (!Array.isArray(mapDocument.edges) || mapDocument.edges.length === 0) {
+        throw new Error('The map extract has no street edges.');
+      }
+      mapNetwork = buildRoadNetwork(mapDocument);
+      mapTraffic = new MapTraffic(mapNetwork, {
+        carCount: mapCarCount,
+        seed: 0x5eed1234,
+      });
+      mapView = createMapView({
+        renderer: world.renderer,
+        document: mapDocument,
+        network: mapNetwork,
+        traffic: mapTraffic,
+      });
+      mapView.onFollowChange = (carId) => ui.setFollowing(carId);
+      mapView.setActive(false);
+      publishRoadMapSurface();
+      return true;
+    } catch (error) {
+      console.error(error);
+      ui.showVrToast(`The real map could not be loaded: ${error.message}`);
+      return false;
+    } finally {
+      mapLoading = false;
+      ui.hideLoading();
+    }
+  }
+
+  async function setMode(nextMode) {
+    if (nextMode === mode) {
+      return mode;
+    }
+    if (xrActive) {
+      ui.showVrToast('Exit VR before switching to the real map.');
+      return mode;
+    }
+
+    if (nextMode === 'map') {
+      if (!(await ensureMapLoaded())) {
+        return mode;
+      }
+      sandboxWasPlaying = playing;
+      playing = false;
+      accumulator = 0;
+      ui.setPlayback(false);
+
+      mode = 'map';
+      mapPaused = false;
+      mapAccumulator = 0;
+      world.controls.enabled = false;
+      mapView.setActive(true);
+      ui.setMode('map');
+      ui.setMapMeta({
+        name: mapDocument.name,
+        place: mapDocument.place,
+        attribution: mapDocument.attribution,
+        stats: mapDocument.stats,
+      });
+      ui.setMapStats(mapTraffic.getStats());
+      ui.setMapRate(mapRate);
+      ui.setMapDensity(mapCarCount);
+      ui.setMapPlaying(!mapPaused);
+      ui.setFollowing(null);
+
+      document.title = `${mapDocument.name} · Road Sand Table`;
+      const url = new URL(window.location.href);
+      url.searchParams.set('mode', 'map');
+      window.history.replaceState(null, '', url);
+    } else {
+      mode = 'sandbox';
+      mapPaused = true;
+      mapAccumulator = 0;
+      mapView?.setActive(false);
+      mapView?.stopFollowing();
+      ui.setFollowing(null);
+      world.controls.enabled = true;
+      ui.setMode('sandbox');
+      playing = sandboxWasPlaying;
+      ui.setPlayback(playing);
+      refreshControls();
+
+      document.title = `${scenario.title} · Road Sand Table`;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('mode');
+      window.history.replaceState(null, '', url);
+    }
+    return mode;
+  }
+
+  function setMapPaused(paused) {
+    mapPaused = Boolean(paused);
+    mapAccumulator = 0;
+    ui.setMapPlaying(!mapPaused);
+  }
+
+  function setMapRate(nextRate) {
+    mapRate = nextRate;
+    mapAccumulator = 0;
+    ui.setMapRate(mapRate);
+  }
+
+  function setMapDensity(value) {
+    mapCarCount = Math.max(0, Math.min(180, Math.round(value)));
+    if (mapTraffic) {
+      mapTraffic.setCarCount(mapCarCount);
+      ui.setMapStats(mapTraffic.getStats());
+      publishRoadMapSurface();
+    }
+    ui.setMapDensity(mapCarCount);
+  }
+
+  function followMapCar(carId) {
+    if (!mapView || !mapTraffic) {
+      return null;
+    }
+    let id = carId;
+    if (!id) {
+      const moving = mapTraffic.cars.filter((car) => car.speed > 2);
+      const pool = moving.length > 0 ? moving : mapTraffic.cars;
+      if (pool.length === 0) {
+        return null;
+      }
+      id = pool[Math.floor(Math.random() * pool.length)].id;
+    }
+    const followed = mapView.follow(id);
+    ui.setFollowing(followed);
+    return followed;
+  }
+
+  function toggleMapFollow() {
+    if (!mapView) {
+      return;
+    }
+    if (mapView.followId) {
+      mapView.stopFollowing();
+      mapView.frameAll();
+      ui.setFollowing(null);
+      return;
+    }
+    followMapCar();
+  }
+
+  function resetMapView() {
+    mapView?.resetView();
+    ui.setFollowing(null);
+  }
+
   async function switchScenario(id) {
     if (switchingScenario || !catalog) {
       return;
@@ -504,7 +732,7 @@ function start() {
   }
 
   async function enterVr() {
-    if (!xrManager?.supported) {
+    if (mode === 'map' || !xrManager?.supported) {
       return;
     }
     ui.setVrBusy(true);
@@ -532,6 +760,32 @@ function start() {
   function tick(time, frame) {
     const deltaSeconds = Math.min(0.1, Math.max(0, (time - lastRenderTime) / 1000));
     lastRenderTime = time;
+
+    if (mode === 'map') {
+      if (!mapView || !mapTraffic) {
+        return;
+      }
+      if (!mapPaused) {
+        mapAccumulator += deltaSeconds * mapRate;
+        let steps = 0;
+        while (mapAccumulator >= MAP_FIXED_DT && steps < 6) {
+          mapTraffic.advance(MAP_FIXED_DT);
+          mapAccumulator -= MAP_FIXED_DT;
+          steps += 1;
+        }
+        if (steps === 6) {
+          mapAccumulator = 0;
+        }
+      }
+      mapView.update(deltaSeconds);
+
+      if (time - lastMapUiUpdate > 220) {
+        lastMapUiUpdate = time;
+        ui.setMapStats(mapTraffic.getStats());
+      }
+      mapView.render();
+      return;
+    }
 
     if (xrActive) {
       const nextViewerPose = captureViewerPose(frame);
@@ -680,6 +934,12 @@ function start() {
         onSeek: seekToFrame,
         onEnterVr: enterVr,
         onScenario: switchScenario,
+        onMode: setMode,
+        onMapPlayPause: () => setMapPaused(!mapPaused),
+        onMapSpeed: setMapRate,
+        onMapDensity: setMapDensity,
+        onMapFollow: toggleMapFollow,
+        onMapResetView: resetMapView,
       });
       ui.setScenario(scenario, scenarioIndex, catalog.scenarios.length);
       ui.setBehavior(behaviorId);
@@ -691,6 +951,10 @@ function start() {
       requestAnimationFrame(() => {
         ui.hideLoading();
         window.__sandTableReady = true;
+
+        if (new URLSearchParams(window.location.search).get('mode') === 'map') {
+          setMode('map');
+        }
       });
 
       xrManager.init();
@@ -699,6 +963,7 @@ function start() {
       window.__sandTable = {
         getState: () => ({
           ready: true,
+          mode,
           scenarioId: scenario.id,
           scenarioTitle: scenario.title,
           scenarioIndex,
@@ -777,6 +1042,15 @@ function start() {
         setSpeed: changeSpeed,
         loadScenario: switchScenario,
         getScenarioList: () => catalog.scenarios.map((entry) => ({ ...entry })),
+        setMode,
+        getMapState: () => window.__roadMap?.getState() ?? null,
+        setMapDensity,
+        setMapRate,
+        mapPlay: () => setMapPaused(false),
+        mapPause: () => setMapPaused(true),
+        followCar: followMapCar,
+        resetMapView,
+        toggleMapFollow,
         enterVr,
         exitVr: () => xrManager?.exit(),
         resetTable: resetTablePosition,
