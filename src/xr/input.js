@@ -4,12 +4,6 @@
 // Hands: pinch is the single action. Whether it selects a button, scrubs,
 // moves the panel or grabs the table is decided by what the pinch ray hits.
 import * as THREE from 'three';
-import {
-  MAX_TABLE_HEIGHT,
-  MAX_TABLE_SCALE,
-  MIN_TABLE_HEIGHT,
-  MIN_TABLE_SCALE,
-} from './tablePlacement.js';
 
 const HANDLE_HIT_RADIUS = 0.13;
 const CONTROLLER_RAY_LENGTH = 1.1;
@@ -149,6 +143,22 @@ export class XrInput {
       pointer.handLine.frustumCulled = false;
       this.scene.add(pointer.handLine);
     }
+  }
+
+  /** Re-parent the shared XR controller groups into this input's scene. */
+  attachToScene() {
+    for (const pointer of this.pointers) {
+      this.scene.add(pointer.rayGroup, pointer.gripGroup, pointer.handGroup);
+    }
+    this.scene.updateMatrixWorld(true);
+  }
+
+  get tableBounds() {
+    return this.world.tableBounds ?? {
+      halfWidth: 1.84,
+      halfDepth: 1.44,
+      surfaceTolerance: 0.24,
+    };
   }
 
   createPointer(index, cursorGeometry) {
@@ -485,16 +495,17 @@ export class XrInput {
     }
 
     const planeY = this.world.tableRoot.position.y;
+    const bounds = this.tableBounds;
     if (Math.abs(pointer.ray.direction.y) > 0.0001) {
       const along = (planeY - pointer.ray.origin.y) / pointer.ray.direction.y;
       if (along > 0) {
         const point = pointer.ray.origin.clone().addScaledVector(pointer.ray.direction, along);
         const local = this.world.tableRoot.worldToLocal(point.clone());
         if (
-          Math.abs(local.x) <= 1.84 &&
-          Math.abs(local.z) <= 1.44 &&
-          local.y > -0.2 &&
-          local.y < 0.25
+          Math.abs(local.x) <= bounds.halfWidth &&
+          Math.abs(local.z) <= bounds.halfDepth &&
+          local.y > -bounds.surfaceTolerance &&
+          local.y < bounds.surfaceTolerance
         ) {
           if (!best || along < best.distance) {
             best = {
@@ -509,11 +520,11 @@ export class XrInput {
 
     if (pointer.isHand) {
       const local = this.world.tableRoot.worldToLocal(pointer.pinchPoint.clone());
-      const nearSurface = local.y > -0.16 && local.y < 0.24;
+      const nearSurface = local.y > -bounds.surfaceTolerance && local.y < bounds.surfaceTolerance;
       if (
         nearSurface &&
-        Math.abs(local.x) <= 1.84 &&
-        Math.abs(local.z) <= 1.44
+        Math.abs(local.x) <= bounds.halfWidth &&
+        Math.abs(local.z) <= bounds.halfDepth
       ) {
         const directDistance = pointer.pinchPoint.distanceTo(pointer.ray.origin);
         if (!best || directDistance < best.distance) {
@@ -702,8 +713,8 @@ export class XrInput {
       this.world.tableRoot.position.copy(grab.startPosition).add(delta);
       this.world.tableRoot.position.y = clamp(
         this.world.tableRoot.position.y,
-        MIN_TABLE_HEIGHT,
-        MAX_TABLE_HEIGHT,
+        this.placement.minHeight,
+        this.placement.maxHeight,
       );
       this.world.tableRoot.rotation.y = normalizeAngle(
         grab.startYaw + normalizeAngle(pointer.rotationYaw - grab.startPointerYaw),
@@ -729,8 +740,8 @@ export class XrInput {
 
       const scale = clamp(
         this.twoHand.startScale * (distance / this.twoHand.startDistance),
-        MIN_TABLE_SCALE,
-        MAX_TABLE_SCALE,
+        this.placement.minScale,
+        this.placement.maxScale,
       );
       this.world.tableRoot.scale.setScalar(scale);
       this.world.tableRoot.rotation.y = normalizeAngle(
@@ -741,8 +752,8 @@ export class XrInput {
         .add(midpoint.clone().sub(this.twoHand.startMidpoint));
       this.world.tableRoot.position.y = clamp(
         this.world.tableRoot.position.y,
-        MIN_TABLE_HEIGHT,
-        MAX_TABLE_HEIGHT,
+        this.placement.minHeight,
+        this.placement.maxHeight,
       );
     }
   }

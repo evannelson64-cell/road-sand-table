@@ -10,9 +10,10 @@ Healdsburg Plaza, California. Switching modes never changes or unloads the other
 scene.
 
 > **Current status: Stage 3 complete — ten scenario tiles — plus the Stage 4
-> real-street map.** The immersive flow passes automated WebXR emulator tests.
-> It has **not yet been confirmed on physical Quest hardware**, so treat the live
-> VR build as ready to test rather than headset-verified.
+> real-street map, desktop and immersive.** The immersive flow passes automated
+> WebXR emulator tests. It has **not yet been confirmed on physical Quest
+> hardware**, so treat the live VR build as ready to test rather than
+> headset-verified.
 >
 > **Live site:** <https://evannelson64-cell.github.io/road-sand-table/> (HTTPS)
 >
@@ -31,6 +32,8 @@ scene.
 ![Ride-along camera following a car on the real street graph](docs/stage-4-map-follow.png)
 
 ![Animated ride-along through the extracted street graph](docs/stage-4-map-demo.gif)
+
+![The real map as a room-scale miniature in immersive VR](docs/stage-4-map-vr.png)
 
 ![Real map mode on a phone](docs/stage-4-map-mobile.png)
 
@@ -79,6 +82,11 @@ stay exactly as they were.
   reset view. The info card reports live cars, moving cars, average speed and
   street-link count.
 - **Deep link:** add `?mode=map` to open the real map directly.
+- **VR:** **Enter VR** places the same map as a 1.7 m room-scale miniature at
+  table height, with a matching world-space panel for pause/play, speed,
+  density and placement. Grip any corner to slide it, twist to rotate and use
+  two grips to scale; the sticks move, lift and turn the table. The miniature
+  uses the same traffic, signals, buildings and ODbL credit as desktop.
 - **No runtime service calls:** the browser only reads the committed
   `data/maps/healdsburg-plaza.json` file. It never contacts Overpass or any other
   map API.
@@ -135,6 +143,9 @@ private ways and emergency access stay visible but do not carry demo traffic.
 - Immersive WebXR with a room-scale table, four corner grips, two-hand scaling,
   thumbstick movement, a grabbable world-space control panel, and optional hand
   tracking with controller fallback.
+- The real map has its own matching VR mode: the same miniature treatment on a
+  1.7 m plinth, with live map traffic, density and placement controls on its
+  world-space panel.
 - No runtime CDN, no external APIs, no build step, no secrets.
 
 ## Run it locally
@@ -163,9 +174,9 @@ at the top of the page.
 
 ## Immersive table controls
 
-The physical table is about **1.06 m × 0.84 m**, with its top at **0.85 m**.
-It starts about 1.0 m in front of the viewer, putting the near edge roughly
-0.6 m away.
+The sand-table miniature is about **1.06 m × 0.84 m**, with its top at
+**0.85 m**. It starts about 1.0 m in front of the viewer, putting the near edge
+roughly 0.6 m away.
 
 - **Move in any direction:** grip/pinch any of the four brass corner grips.
 - **Rotate:** twist your wrist while holding a corner.
@@ -183,12 +194,28 @@ Controllers use the trigger for panel buttons and squeeze to grab. Hand tracking
 is requested as an optional session feature; a pinch performs the same action
 when hands are active. Controllers remain the fallback.
 
+### Real map in VR
+
+Open **Real map**, then press **Enter VR**. The map arrives on the same kind of
+wooden plinth as a **1.7 m** room-scale miniature, oriented so OpenStreetMap
+north points away from you. Traffic pauses when the session starts and resumes
+at its previous state when you exit.
+
+- **Placement:** corner grips, thumbsticks, **Lock**, **Reset table**,
+  **Scale ±**, **Height ±** and **Rotate L/R** work exactly as they do on the
+  sand table.
+- **Map panel:** **Pause/Play**, **0.5× / 1× / 2×** and density **− / +** change
+  the live model in place; the left column reports cars, moving cars and average
+  speed.
+- **Exit VR:** the panel button or the Quest system menu returns to the desktop
+  map without disturbing the sand table.
+
 ## Test it
 
 ```bash
 npm test                  # 29 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 12 browser tests: 4 sand-table + 5 real-map + 3 WebXR
+npm run test:smoke        # 14 browser tests: 4 sand-table + 5 real-map + 5 WebXR
 npm run test:all          # both
 ```
 
@@ -206,11 +233,14 @@ switching, static map loading, live traffic, pause, speed, density, ride along,
 
 The WebXR tests use Meta's **Immersive Web Emulation Runtime (IWER)** through
 [`playwright-webxr`](https://www.npmjs.com/package/playwright-webxr), with the
-`metaQuest2` device profile. They verify session entry/teardown, panel buttons,
-timeline seeking, thumbsticks, lock/reset, panel dragging, corner grabbing,
-two-hand scaling, scenario navigation, collision review and the safe replay.
+`metaQuest2` device profile. For the sand table they verify session
+entry/teardown, panel buttons, timeline seeking, thumbsticks, lock/reset, panel
+dragging, corner grabbing, two-hand scaling, scenario navigation, collision
+review and the safe replay. The map tests verify the room-scale miniature,
+traffic play/pause and speed inside VR, density changes, placement controls,
+stick movement, locking, panel buttons and a clean return to both desktop modes.
 
-Last local verification: **29/29 unit tests and 12/12 Playwright tests passing**
+Last local verification: **29/29 unit tests and 14/14 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures
@@ -230,10 +260,13 @@ Quest 2.
 5. Try left/right thumbsticks, **Lock**, **Reset table**, and two corner grips
    for scaling.
 6. Use **‹ Prev / Next ›** to step through all ten scenarios.
-7. Run each failure preset and confirm that the conflict pauses and **Show safe
+7. Switch to **Real map**, press **Enter VR**, and confirm the 1.7 m miniature
+   loads, the map panel buttons respond, and traffic pauses/resumes around the
+   session.
+8. Run each failure preset and confirm that the conflict pauses and **Show safe
    version** plays the correct behavior.
-8. Report whether placement, rotation, scaling, panel readability and the new
-   scenario visuals feel comfortable on the headset.
+9. Report whether placement, rotation, scaling, panel readability, the real-map
+   miniature and the scenario visuals feel comfortable on the headset.
 
 The headset flow is not claimed as working until that test is complete.
 
@@ -295,7 +328,9 @@ src/scene/mapScene.js            low-poly OSM scene, orbit camera and ride along
 src/xr/session.js                immersive-vr session lifecycle
 src/xr/tablePlacement.js         room-scale transform and constraints
 src/xr/input.js                  controllers, hand pinches and table grabs
-src/xr/controlPanel.js           canvas-rendered world-space panel
+src/xr/panelKit.js               shared canvas palette and drawing helpers
+src/xr/controlPanel.js           canvas-rendered sand-table world-space panel
+src/xr/mapPanel.js               canvas-rendered real-map world-space panel
 src/ui.js                        desktop/phone DOM controls and mode switch
 data/scenarios.json              scenario catalog and menu order
 data/scenario-*.json             ten hand-authored tiles
@@ -392,7 +427,8 @@ aisles and driveways remain visible but are excluded from traffic when
   signals, all-way ordering, roundabout, train, scenario menus and full tests.
 - **Stage 4 — complete:** separate real-map mode with a committed OSM extract,
   a Node converter, live traffic on the real street graph, orbit/pan/zoom
-  navigation, ride-along camera, mode switching and map tests.
+  navigation, ride-along camera, mode switching, map tests, and a matching
+  room-scale immersive mode on the same map panel and placement controls.
 - **Stage 5 (optional):** additional extracts or a larger regional graph, plus
   richer junction behaviour such as pedestrian phases, turn lanes and
   roundabout-specific entry rules.

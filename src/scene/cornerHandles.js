@@ -8,12 +8,12 @@ const HANDLE_RADIUS = 0.105;
 const HANDLE_HEIGHT = 0.028;
 const KNOB_RADIUS = 0.048;
 
-export function createCornerHandles(scenario) {
+export function createCornerHandles(scenario, options = {}) {
+  const { scale = 1, inset = 0.13, y = 0 } = options;
   const group = new THREE.Group();
   group.name = 'corner-handles';
   const handles = [];
 
-  const inset = 0.13;
   const halfWidth = scenario.table.playWidth / 2 - inset;
   const halfDepth = scenario.table.playDepth / 2 - inset;
   const positions = [
@@ -36,6 +36,7 @@ export function createCornerHandles(scenario) {
     const handle = new THREE.Group();
     handle.name = position.id;
     handle.userData.handleId = position.id;
+    handle.scale.setScalar(scale);
 
     const material = lambert('#b68a4e', {
       emissive: new THREE.Color('#000000'),
@@ -62,7 +63,7 @@ export function createCornerHandles(scenario) {
     insetDot.position.y = 0.046;
     handle.add(insetDot);
 
-    handle.position.set(position.x, 0, position.z);
+    handle.position.set(position.x, y, position.z);
     group.add(handle);
 
     handles.push({

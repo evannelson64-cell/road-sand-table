@@ -8,6 +8,7 @@ import { UI } from './ui.js';
 import { XrSessionManager } from './xr/session.js';
 import { TablePlacement } from './xr/tablePlacement.js';
 import { XrControlPanel } from './xr/controlPanel.js';
+import { MapXrPanel } from './xr/mapPanel.js';
 import { XrInput } from './xr/input.js';
 import { buildRoadNetwork } from './map/graph.js';
 import { MapTraffic } from './map/traffic.js';
@@ -19,6 +20,13 @@ const MAX_STEPS_PER_RENDER = 8;
 const XR_UI_INTERVAL_MS = 250;
 const MAP_FIXED_DT = 1 / 60;
 const MAP_DEFAULT_CARS = 64;
+const MAP_VR_WIDTH = 1.68;
+const MAP_VR_MIN_WIDTH = 1.2;
+const MAP_VR_MAX_WIDTH = 2.5;
+const MAP_VR_HEIGHT = 0.9;
+const MAP_VR_FORWARD = 1.62;
+const MAP_PANEL_FORWARD = 0.76;
+const MAP_PANEL_RIGHT = 0.94;
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -85,6 +93,10 @@ function start() {
   let mapAccumulator = 0;
   let lastMapUiUpdate = 0;
   let sandboxWasPlaying = true;
+  let mapPlacement = null;
+  let mapPanel = null;
+  let mapInput = null;
+  let mapPausedBeforeXr = true;
 
   const panelPosition = new THREE.Vector3();
 
@@ -125,7 +137,41 @@ function start() {
     world.setConflict(simulation.collision?.point ?? null);
   }
 
+  function activePlacement() {
+    return mode === 'map' ? mapPlacement : placement;
+  }
+
+  function activeXrPanel() {
+    return mode === 'map' ? mapPanel : xrPanel;
+  }
+
+  function activeXrInput() {
+    return mode === 'map' ? mapInput : xrInput;
+  }
+
+  function refreshMapXrPanel() {
+    if (!mapPanel || !mapPlacement || !mapTraffic) {
+      return;
+    }
+    const scale = mapPlacement.root.scale.x;
+    mapPanel.setState({
+      playing: !mapPaused,
+      rate: mapRate,
+      carCount: mapCarCount,
+      stats: mapTraffic.getStats(),
+      linkCount: mapDocument?.stats?.roadEdges ?? 0,
+      locked: mapPlacement.locked,
+      scale,
+      tableWidth: (mapView?.plinthWidth ?? 0) * scale,
+      handTracking,
+    });
+  }
+
   function refreshXrPanel() {
+    if (mode === 'map') {
+      refreshMapXrPanel();
+      return;
+    }
     if (!xrPanel || !simulation || !placement) {
       return;
     }
@@ -327,37 +373,39 @@ function start() {
   }
 
   function togglePlacementLock() {
-    if (!placement) {
+    const target = activePlacement();
+    if (!target) {
       return;
     }
-    placement.toggleLocked();
-    if (placement.locked) {
-      xrInput?.cancelAll();
+    target.toggleLocked();
+    if (target.locked) {
+      activeXrInput()?.cancelAll();
     }
     refreshXrPanel();
   }
 
   function resetTablePosition() {
-    if (!xrActive || !viewerPose || !placement) {
+    const target = activePlacement();
+    if (!xrActive || !viewerPose || !target) {
       return;
     }
-    placement.placeInFront(viewerPose);
-    xrInput?.cancelAll();
+    target.placeInFront(viewerPose);
+    activeXrInput()?.cancelAll();
     refreshXrPanel();
   }
 
   function nudgeTableHeight(delta) {
-    placement?.nudgeHeight(delta);
+    activePlacement()?.nudgeHeight(delta);
     refreshXrPanel();
   }
 
   function rotateTable(delta) {
-    placement?.rotateBy(delta);
+    activePlacement()?.rotateBy(delta);
     refreshXrPanel();
   }
 
   function scaleTable(factor) {
-    placement?.scaleBy(factor);
+    activePlacement()?.scaleBy(factor);
     refreshXrPanel();
   }
 
@@ -396,31 +444,42 @@ function start() {
   }
 
   function placePanelForViewer(pose) {
-    if (!pose || !xrPanel) {
+    const panel = activeXrPanel();
+    if (!pose || !panel) {
       return;
     }
+    const isMap = mode === 'map';
     const forward = horizontalForward(pose.forward);
     const right = { x: -forward.z, z: forward.x };
     panelPosition.set(
-      pose.position.x + forward.x * 1.15 + right.x * 0.44,
-      THREE.MathUtils.clamp(pose.position.y - 0.3, 1.0, 1.42),
-      pose.position.z + forward.z * 1.15 + right.z * 0.44,
+      pose.position.x + forward.x * (isMap ? MAP_PANEL_FORWARD : 1.15) + right.x * (isMap ? MAP_PANEL_RIGHT : 0.44),
+      isMap
+        ? 1.16
+        : THREE.MathUtils.clamp(pose.position.y - 0.3, 1.0, 1.42),
+      pose.position.z + forward.z * (isMap ? MAP_PANEL_FORWARD : 1.15) + right.z * (isMap ? MAP_PANEL_RIGHT : 0.44),
     );
-    xrPanel.root.position.copy(panelPosition);
-    xrPanel.root.lookAt(pose.position.x, pose.position.y, pose.position.z);
+    panel.root.position.copy(panelPosition);
+    panel.root.lookAt(pose.position.x, pose.position.y, pose.position.z);
   }
 
   function beginXrPlacement() {
-    if (!pendingXrPlacement || !viewerPose) {
+    const target = activePlacement();
+    const panel = activeXrPanel();
+    const input = activeXrInput();
+    if (!pendingXrPlacement || !viewerPose || !target || !panel || !input) {
       return;
     }
     pendingXrPlacement = false;
     xrPlaced = true;
-    placement.setViewerPose(viewerPose);
-    placement.placeInFront(viewerPose);
+    target.setViewerPose(viewerPose);
+    target.placeInFront(viewerPose);
     placePanelForViewer(viewerPose);
-    xrPanel.setVisible(true);
-    xrInput.setActive(true);
+    if (mode === 'map') {
+      mapView?.setXrPlaced(true);
+    }
+    input.attachToScene();
+    panel.setVisible(true);
+    input.setActive(true);
     refreshXrPanel();
   }
 
@@ -430,17 +489,34 @@ function start() {
     pendingXrPlacement = true;
     viewerPose = null;
     handTracking = false;
-    playing = false;
-    accumulator = 0;
     document.body.classList.add('is-xr');
-    world.enterXrMode();
-    xrPanel.setVisible(false);
-    xrInput.setActive(false);
     collisionDialogOpen = false;
     ui.hideCollision();
     ui.setPlayback(false);
     ui.setVrBusy(false);
     ui.hideVrToast();
+
+    if (mode === 'map') {
+      mapPausedBeforeXr = mapPaused;
+      mapPaused = true;
+      mapAccumulator = 0;
+      lastXrPanelUpdate = 0;
+      mapView?.setActive(false);
+      mapView?.enterXrMode();
+      mapView?.stopFollowing();
+      ui.setFollowing(null);
+      mapPanel?.setVisible(false);
+      mapInput?.setActive(false);
+      ui.setMapPlaying(false);
+      refreshMapXrPanel();
+      return;
+    }
+
+    playing = false;
+    accumulator = 0;
+    world.enterXrMode();
+    xrPanel.setVisible(false);
+    xrInput.setActive(false);
   }
 
   function exitXrMode() {
@@ -450,13 +526,73 @@ function start() {
     viewerPose = null;
     handTracking = false;
     document.body.classList.remove('is-xr');
-    xrInput.setActive(false);
+    ui.setVrBusy(false);
+    ui.setVrSupported(xrManager?.supported ?? false);
+
+    if (mode === 'map') {
+      mapPanel?.setVisible(false);
+      mapInput?.setActive(false);
+      mapPlacement?.exitDesktop();
+      mapView?.setXrPlaced(false);
+      mapView?.exitXrMode();
+      mapView?.setActive(true);
+      mapPaused = mapPausedBeforeXr;
+      mapAccumulator = 0;
+      ui.setMapPlaying(!mapPaused);
+      ui.setFollowing(null);
+      refreshMapXrPanel();
+      return;
+    }
+
+    xrInput?.setActive(false);
     xrPanel.setVisible(false);
     placement.exitDesktop();
     world.exitXrMode();
-    ui.setVrBusy(false);
-    ui.setVrSupported(xrManager?.supported ?? false);
     refreshControls(Boolean(simulation.collision));
+  }
+
+  function mapXrState() {
+    return {
+      active: xrActive && mode === 'map',
+      placed: xrPlaced && mode === 'map',
+      handTracking,
+      panelVisible: mapPanel?.root.visible ?? false,
+      panelPosition: mapPanel ? mapPanel.root.position.toArray() : null,
+      panelHeader: mapPanel?.getHeaderWorldPosition()?.toArray() ?? null,
+      panelButtons: Object.fromEntries(
+        [
+          'map-play',
+          'map-speed-0.5',
+          'map-speed-1',
+          'map-speed-2',
+          'map-density-down',
+          'map-density-up',
+          'map-lock',
+          'map-reset-table',
+          'map-scale-down',
+          'map-scale-up',
+          'map-height-down',
+          'map-height-up',
+          'map-rotate-left',
+          'map-rotate-right',
+          'map-exit-vr',
+        ].map((id) => {
+          const point = mapPanel?.getButtonWorldPosition(id);
+          return [id, point ? point.toArray() : null];
+        }),
+      ),
+      table: mapPlacement?.getState() ?? null,
+      tableCorners: (mapView?.cornerHandles ?? []).map((handle) => {
+        handle.object.updateMatrixWorld(true);
+        const center = handle.object.localToWorld(handle.centerLocal.clone());
+        return { id: handle.id, position: center.toArray() };
+      }),
+      input: mapInput?.getDebugState() ?? null,
+      render: {
+        calls: world.renderer.info.render.calls,
+        triangles: world.renderer.info.render.triangles,
+      },
+    };
   }
 
   function publishRoadMapSurface() {
@@ -494,6 +630,7 @@ function start() {
           calls: world.renderer.info.render.calls,
           triangles: world.renderer.info.render.triangles,
         },
+        xr: mapXrState(),
       }),
       getCars: () => mapTraffic.getSnapshots(),
       follow: followMapCar,
@@ -537,6 +674,54 @@ function start() {
       });
       mapView.onFollowChange = (carId) => ui.setFollowing(carId);
       mapView.setActive(false);
+
+      const span = Math.max(mapView.plinthWidth, mapView.plinthDepth);
+      mapPlacement = new TablePlacement(mapView.root, {
+        homeScale: MAP_VR_WIDTH / span,
+        minScale: MAP_VR_MIN_WIDTH / span,
+        maxScale: MAP_VR_MAX_WIDTH / span,
+        forwardDistance: MAP_VR_FORWARD,
+        tableHeight: MAP_VR_HEIGHT,
+        moveSpeed: 0.9,
+        // North is −Z in the extract; keep it pointing away from the viewer.
+        yawOffset: Math.PI,
+      });
+
+      mapPanel = new MapXrPanel({
+        onPlayPause: () => setMapPaused(!mapPaused),
+        onSpeed: setMapRate,
+        onDensity: (delta) => setMapDensity(mapCarCount + delta),
+        onToggleLock: togglePlacementLock,
+        onResetTable: resetTablePosition,
+        onNudgeHeight: nudgeTableHeight,
+        onRotate: rotateTable,
+        onScale: scaleTable,
+        onExitVr: () => xrManager?.exit(),
+      });
+      mapView.scene.add(mapPanel.root);
+
+      mapInput = new XrInput({
+        renderer: world.renderer,
+        scene: mapView.scene,
+        world: {
+          tableRoot: mapView.root,
+          tableBounds: mapView.tableBounds,
+          get cornerHandles() {
+            return mapView.cornerHandles;
+          },
+        },
+        placement: mapPlacement,
+        panel: mapPanel,
+        callbacks: {
+          onHandTracking: (tracked) => {
+            handTracking = tracked;
+            refreshXrPanel();
+          },
+        },
+      });
+      mapInput.setActive(false);
+      refreshMapXrPanel();
+
       publishRoadMapSurface();
       return true;
     } catch (error) {
@@ -560,6 +745,10 @@ function start() {
 
     if (nextMode === 'map') {
       if (!(await ensureMapLoaded())) {
+        return mode;
+      }
+      if (xrActive) {
+        ui.showVrToast('Exit VR before switching to the real map.');
         return mode;
       }
       sandboxWasPlaying = playing;
@@ -732,7 +921,7 @@ function start() {
   }
 
   async function enterVr() {
-    if (mode === 'map' || !xrManager?.supported) {
+    if (!xrManager?.supported) {
       return;
     }
     ui.setVrBusy(true);
@@ -765,6 +954,14 @@ function start() {
       if (!mapView || !mapTraffic) {
         return;
       }
+      if (xrActive) {
+        const nextViewerPose = captureViewerPose(frame);
+        if (nextViewerPose) {
+          viewerPose = nextViewerPose;
+          mapPlacement?.setViewerPose(viewerPose);
+        }
+        beginXrPlacement();
+      }
       if (!mapPaused) {
         mapAccumulator += deltaSeconds * mapRate;
         let steps = 0;
@@ -779,7 +976,15 @@ function start() {
       }
       mapView.update(deltaSeconds);
 
-      if (time - lastMapUiUpdate > 220) {
+      if (xrActive && xrPlaced) {
+        mapInput?.update(deltaSeconds, viewerPose);
+        if (time - lastXrPanelUpdate > XR_UI_INTERVAL_MS) {
+          lastXrPanelUpdate = time;
+          refreshMapXrPanel();
+        }
+      }
+
+      if (!xrActive && time - lastMapUiUpdate > 220) {
         lastMapUiUpdate = time;
         ui.setMapStats(mapTraffic.getStats());
       }
