@@ -624,6 +624,7 @@ function start() {
         camera: {
           position: mapView.camera.position.toArray(),
           target: mapView.controls.target.toArray(),
+          near: mapView.camera.near,
           distance: mapView.camera.position.distanceTo(mapView.controls.target),
         },
         render: {

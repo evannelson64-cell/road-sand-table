@@ -71,6 +71,9 @@ test('the real map becomes a room-scale table in immersive VR', async ({ page, x
   expect(current.xr.tableCorners).toHaveLength(4);
   expect(current.paused).toBe(true);
   expect(current.xr.render.calls).toBeLessThan(200);
+  // The miniature is under 2 m away, so VR must use a near plane small enough
+  // not to slice the front of the plinth. Desktop keeps its 1 m near plane.
+  expect(current.camera.near).toBeCloseTo(0.05, 2);
 
   // Play the live traffic, then check it actually advances inside the session.
   const beforeTime = current.stats.time;
@@ -153,6 +156,7 @@ test('the real map becomes a room-scale table in immersive VR', async ({ page, x
   expect(current.paused).toBe(false);
   expect(current.xr.table.scale).toBeCloseTo(1, 5);
   expect(current.camera.distance).toBeGreaterThan(300);
+  expect(current.camera.near).toBeCloseTo(1, 2);
 
   // The sand table still works after map VR.
   await page.locator('#mode-sandbox').click();
