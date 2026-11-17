@@ -750,7 +750,13 @@ export function createMapView({ renderer, document, network, traffic }) {
     desktopCameraState = {
       position: camera.position.clone(),
       target: controls.target.clone(),
+      near: camera.near,
     };
+    // Desktop can afford a 1-unit near plane across a 700 m map, but the
+    // miniature sits less than 2 m away in VR. Keep the near plane at 5 cm
+    // there so the front of the plinth and the room floor are not cut away.
+    camera.near = 0.05;
+    camera.updateProjectionMatrix();
     stopFollowing();
     controls.enabled = false;
     room.visible = true;
@@ -774,6 +780,8 @@ export function createMapView({ renderer, document, network, traffic }) {
     if (desktopCameraState) {
       camera.position.copy(desktopCameraState.position);
       controls.target.copy(desktopCameraState.target);
+      camera.near = desktopCameraState.near;
+      camera.updateProjectionMatrix();
       camera.lookAt(controls.target);
       controls.update();
       desktopCameraState = null;
