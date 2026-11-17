@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#e7eceb">
-    <meta name="description" content="A calm floating WebXR sand table for learning right-of-way rules across ten traffic scenarios.">
+    <meta name="description" content="A calm floating WebXR sand table for learning right-of-way rules, plus a real-street map mode built from OpenStreetMap data.">
     <title>Road Sand Table</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e9e4d5'/%3E%3Cpath d='M4 17h24' stroke='%2351565b' stroke-width='7'/%3E%3Cpath d='M17 4v24' stroke='%2351565b' stroke-width='7'/%3E%3Crect x='19' y='11' width='7' height='4' rx='1' fill='%232f6fd6'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="./styles.css">
@@ -30,6 +30,11 @@
         <p id="scene-subtitle" class="scene-subtitle">Oak Lane meets Main Street</p>
       </header>
 
+      <div class="mode-switch" id="mode-switch" role="group" aria-label="View mode">
+        <button id="mode-sandbox" class="mode-button is-active" type="button" data-mode="sandbox" aria-pressed="true">Sand table</button>
+        <button id="mode-map" class="mode-button" type="button" data-mode="map" aria-pressed="false">Real map</button>
+      </div>
+
       <button id="enter-vr" class="vr-button" type="button" hidden>
         <span class="vr-button-icon" aria-hidden="true">◉</span>
         <span>Enter VR</span>
@@ -37,7 +42,7 @@
 
       <div id="vr-toast" class="vr-toast" role="status" aria-live="polite" hidden></div>
 
-      <aside class="legend" aria-label="Scene legend">
+      <aside class="legend" id="sandbox-legend" aria-label="Scene legend">
         <div class="legend-row">
           <span class="legend-dot is-focus"></span>
           <span>Blue car: focus</span>
@@ -53,7 +58,27 @@
         <div class="legend-hint">Desktop: drag to orbit · Scroll to zoom<br>Quest: Enter VR to place the table</div>
       </aside>
 
-      <section class="caption-card" aria-labelledby="caption-heading">
+      <aside class="legend is-map-legend" id="map-legend" aria-label="Map legend" hidden>
+        <div class="legend-row">
+          <span class="legend-swatch" style="background:#5b6065"></span>
+          <span>Street network</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-swatch" style="background:#e6dac5"></span>
+          <span>Buildings from OSM</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-swatch" style="background:#b6cba2"></span>
+          <span>Parks and green space</span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-dot is-focus"></span>
+          <span>Live cars</span>
+        </div>
+        <div class="legend-hint">Drag to orbit · Scroll to zoom<br>WASD / arrows to move · Click a car to ride along</div>
+      </aside>
+
+      <section class="caption-card" id="caption-card" aria-labelledby="caption-heading">
         <p class="kicker" id="caption-heading">Right of way</p>
         <p id="rule-text" class="rule-text">Loading the rule…</p>
         <div class="risk-line">
@@ -66,6 +91,22 @@
         <p id="habit-text" class="habit-text"></p>
       </section>
 
+      <section class="caption-card is-map-card" id="map-info" aria-labelledby="map-info-heading" hidden>
+        <p class="kicker" id="map-info-heading">OpenStreetMap · real street graph</p>
+        <p class="rule-text" id="map-name">Healdsburg Plaza</p>
+        <p class="risk-text" id="map-blurb">
+          Cars are generated on the actual street network, following one-way
+          signs, signals and stop signs. Nothing is fetched from OSM at runtime.
+        </p>
+        <div class="map-stats" aria-label="Live map statistics">
+          <div class="map-stat"><strong id="map-stat-cars">64</strong><span>cars</span></div>
+          <div class="map-stat"><strong id="map-stat-moving">–</strong><span>moving</span></div>
+          <div class="map-stat"><strong id="map-stat-speed">–</strong><span>avg km/h</span></div>
+          <div class="map-stat"><strong id="map-stat-streets">–</strong><span>street links</span></div>
+        </div>
+        <p class="map-attribution" id="map-attribution">© OpenStreetMap contributors · ODbL 1.0</p>
+      </section>
+
       <div id="lesson-banner" class="lesson-banner" role="status" aria-live="polite" hidden>
         <span class="lesson-check" aria-hidden="true">✓</span>
         <div>
@@ -74,7 +115,7 @@
         </div>
       </div>
 
-      <section class="control-panel" aria-label="Simulation controls">
+      <section class="control-panel" id="sandbox-panel" aria-label="Simulation controls">
         <div class="control-head">
           <div class="scenario-block">
             <label class="kicker" for="scenario-select">Scenario</label>
@@ -120,6 +161,30 @@
           <span id="foot-note" class="foot-note">Right-hand traffic · two-way stop</span>
         </div>
       </section>
+
+      <section class="control-panel map-panel" id="map-panel" aria-label="Map controls" hidden>
+        <div class="map-panel-row">
+          <button id="map-play" class="play-button" type="button" aria-label="Pause traffic">
+            <span id="map-play-symbol" aria-hidden="true">❚❚</span>
+            <span id="map-play-label">Pause</span>
+          </button>
+          <div class="speed-group" id="map-speed-group" role="group" aria-label="Traffic speed">
+            <button class="speed-button" data-map-speed="0.5" type="button" aria-pressed="false">0.5×</button>
+            <button class="speed-button is-active" data-map-speed="1" type="button" aria-pressed="true">1×</button>
+            <button class="speed-button" data-map-speed="2" type="button" aria-pressed="false">2×</button>
+          </div>
+          <label class="map-slider" for="map-density">
+            <span class="kicker">Traffic</span>
+            <input id="map-density" type="range" min="0" max="180" step="4" value="64">
+            <span id="map-density-value" class="map-slider-value">64</span>
+          </label>
+          <button id="map-follow" class="secondary-button" type="button">Ride along</button>
+          <button id="map-reset-view" class="text-button" type="button">Reset view</button>
+        </div>
+        <p class="foot-note" id="map-foot-note">
+          Drag to orbit · Right-drag or two-finger swipe to pan · Scroll to zoom · WASD / arrows to move the camera
+        </p>
+      </section>
     </main>
 
     <div id="collision-scrim" class="collision-scrim" hidden>
@@ -137,7 +202,7 @@
 
     <div id="loading" class="loading-screen" role="status" aria-live="polite">
       <span class="loading-mark" aria-hidden="true"></span>
-      <p>Building the neighborhood…</p>
+      <p id="loading-text">Building the neighborhood…</p>
     </div>
 
     <div id="error-screen" class="error-screen" role="alert" hidden>

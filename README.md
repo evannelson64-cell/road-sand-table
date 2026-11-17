@@ -4,12 +4,19 @@ A calm, floating tabletop neighborhood for learning right-of-way rules. It runs
 as a normal Three.js page on desktop and phone, and as an immersive **WebXR**
 experience on Meta Quest.
 
-> **Current status: Stage 3 complete — ten scenario tiles.** The immersive flow
-> passes automated WebXR emulator tests. It has **not yet been confirmed on
-> physical Quest hardware**, so treat the live VR build as ready to test rather
-> than headset-verified.
+There are now **two ways to explore it**: the original ten-scenario sand table,
+and a separate **real map** mode built from a one-time OpenStreetMap extract of
+Healdsburg Plaza, California. Switching modes never changes or unloads the other
+scene.
+
+> **Current status: Stage 3 complete — ten scenario tiles — plus the Stage 4
+> real-street map.** The immersive flow passes automated WebXR emulator tests.
+> It has **not yet been confirmed on physical Quest hardware**, so treat the live
+> VR build as ready to test rather than headset-verified.
 >
 > **Live site:** <https://evannelson64-cell.github.io/road-sand-table/> (HTTPS)
+>
+> **Real map direct link:** <https://evannelson64-cell.github.io/road-sand-table/?mode=map>
 
 ![Signal intersection with an unprotected left turn](docs/stage-3-signal.png)
 
@@ -18,6 +25,15 @@ experience on Meta Quest.
 ![Railroad crossing with train and flashing lights](docs/stage-3-railroad.png)
 
 ![The same sand table in immersive VR](docs/stage-3-vr.png)
+
+![Real map overview of Healdsburg Plaza with live traffic](docs/stage-4-map-overview.png)
+
+![Ride-along camera following a car on the real street graph](docs/stage-4-map-follow.png)
+
+![Animated ride-along through the extracted street graph](docs/stage-4-map-demo.gif)
+
+![Real map mode on a phone](docs/stage-4-map-mobile.png)
+
 
 ## Scenario library
 
@@ -42,9 +58,71 @@ The failure preset always pauses at first contact with an orange conflict ring.
 **Replay in slow motion**, **Show how to avoid it**, and **Try again** are
 available on desktop and in VR.
 
+## Real map mode
+
+The segmented control at the top of the page switches between **Sand table** and
+**Real map**. The real map is a completely separate `THREE.Scene` rendered on the
+same WebGL renderer, so the scenario simulation and all ten sand-table layouts
+stay exactly as they were.
+
+- **Place:** Healdsburg Plaza, Healdsburg, California.
+- **Extract:** 237 street links, 176 junctions, 322 building footprints, parks,
+  parking areas, streams, 2 signals, 17 stop signs and 5 yield signs.
+- **Traffic:** 64 cars by default, drawn from the static street graph. Cars use
+  right-hand offset lanes, follow the car ahead, obey one-way streets, simple
+  two-phase signals and approach-mapped stop/yield signs, and take one junction
+  box at a time. Density is adjustable from 0 to 180 cars.
+- **Camera:** orbit, pan, scroll/pinch zoom, and `WASD` / arrow keys. `Q` / `E`
+  rotate; `+` / `−` zoom. Click any car, or press **Ride along**, to follow it.
+  `Escape` returns to the overview.
+- **Controls:** pause/play, 0.5× / 1× / 2× traffic speed, density, ride along and
+  reset view. The info card reports live cars, moving cars, average speed and
+  street-link count.
+- **Deep link:** add `?mode=map` to open the real map directly.
+- **No runtime service calls:** the browser only reads the committed
+  `data/maps/healdsburg-plaza.json` file. It never contacts Overpass or any other
+  map API.
+
+The low-poly treatment deliberately matches the sand table: flat-shaded
+buildings with muted roofs, a wooden plinth, paper-and-sand colours, no textures,
+no shadows, and the same calm typography.
+
+### Map data pipeline
+
+The extract is committed once and converted ahead of time:
+
+```text
+data/osm/healdsburg-plaza.query.overpassql   documented Overpass query
+data/osm/healdsburg-plaza.raw.json           raw one-time Overpass response
+scripts/lib/osm-graph.mjs                    projection, graph splitting, tags
+scripts/osm-to-graph.mjs                     converter CLI
+data/maps/healdsburg-plaza.json              static document loaded by the app
+```
+
+Regenerate the app document after replacing the raw extract:
+
+```bash
+node scripts/osm-to-graph.mjs \
+  data/osm/healdsburg-plaza.raw.json \
+  data/maps/healdsburg-plaza.json \
+  --id=healdsburg-plaza \
+  --name="Healdsburg Plaza" \
+  --place="Healdsburg, California" \
+  --bounds=38.6078,-122.8730,38.6134,-122.8665 \
+  --source="Overpass API extract, 2026-11-17"
+```
+
+The converter keeps a `drivable` flag on every edge. Parking aisles, driveways,
+private ways and emergency access stay visible but do not carry demo traffic.
+
 ## What works
 
 - Ten static, hand-built scenario tiles sharing one calm tabletop environment.
+- A separate real-map mode built from a committed OpenStreetMap extract, with
+  vehicles on the actual street graph, approach-mapped signs and signals,
+  orbit/pan/zoom navigation and a click-to-follow ride-along camera.
+- A top-centre mode switch that preserves both scenes; `?mode=map` links
+  straight to the map without changing any scenario defaults.
 - Smooth Catmull-Rom turn and merge paths, sampled into exact arc-length
   trajectories so turning cars rotate continuously instead of snapping.
 - Traffic-light phases, unprotected-left yielding, all-way arrival ordering
@@ -79,6 +157,10 @@ The page works on desktop and phone. Drag to orbit and scroll/pinch to zoom.
 not inside a control. The **Enter VR** button appears only when the browser
 reports `immersive-vr` support.
 
+To open the real map directly, use
+**<http://127.0.0.1:4173/?mode=map>**, or use the **Sand table / Real map** switch
+at the top of the page.
+
 ## Immersive table controls
 
 The physical table is about **1.06 m × 0.84 m**, with its top at **0.85 m**.
@@ -104,16 +186,23 @@ when hands are active. Controllers remain the fallback.
 ## Test it
 
 ```bash
-npm test                  # 21 Node unit tests
+npm test                  # 29 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 7 browser tests: 4 desktop + 3 WebXR
+npm run test:smoke        # 12 browser tests: 4 sand-table + 5 real-map + 3 WebXR
 npm run test:all          # both
 ```
 
 The unit suite loads **all ten scenario JSON files** and requires each correct
 preset to be collision-free for 30 simulated seconds **and** each failure preset
 to produce a collision. It also covers collision math, exact replay, placement
-clamping and the scenario catalog.
+clamping and the scenario catalog. The map tests re-run the OSM converter,
+check the committed map document is reproducible from the raw extract, validate
+lane and approach-control invariants, and run the traffic model for 40 simulated
+seconds to check for NaNs, stuck fleets and deterministic seeds.
+
+The desktop smoke tests cover the original sand table and the real map: mode
+switching, static map loading, live traffic, pause, speed, density, ride along,
+`Escape`, and a clean return to `?mode=`-less sand-table state.
 
 The WebXR tests use Meta's **Immersive Web Emulation Runtime (IWER)** through
 [`playwright-webxr`](https://www.npmjs.com/package/playwright-webxr), with the
@@ -121,7 +210,7 @@ The WebXR tests use Meta's **Immersive Web Emulation Runtime (IWER)** through
 timeline seeking, thumbsticks, lock/reset, panel dragging, corner grabbing,
 two-hand scaling, scenario navigation, collision review and the safe replay.
 
-Last local verification: **21/21 unit tests and 7/7 Playwright tests passing**
+Last local verification: **29/29 unit tests and 12/12 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures
@@ -200,17 +289,25 @@ src/scene/props.js               traffic lights, arrows, islands, van, crossing
 src/scene/trains.js              low-poly freight train
 src/scene/scenery.js             houses and instanced trees
 src/scene/cars.js                low-poly car meshes and contact patches
+src/map/graph.js                 lane network, connectors, signals, approach signs
+src/map/traffic.js               deterministic real-street traffic and junction locks
+src/scene/mapScene.js            low-poly OSM scene, orbit camera and ride along
 src/xr/session.js                immersive-vr session lifecycle
 src/xr/tablePlacement.js         room-scale transform and constraints
 src/xr/input.js                  controllers, hand pinches and table grabs
 src/xr/controlPanel.js           canvas-rendered world-space panel
-src/ui.js                        desktop/phone DOM controls
+src/ui.js                        desktop/phone DOM controls and mode switch
 data/scenarios.json              scenario catalog and menu order
 data/scenario-*.json             ten hand-authored tiles
+data/osm/                        documented Overpass query and raw one-time extract
+data/maps/                       converted static map documents
+scripts/lib/osm-graph.mjs        OSM projection, graph splitting and tag handling
+scripts/osm-to-graph.mjs         one-time Overpass JSON converter CLI
+scripts/preview-map.mjs          README screenshot helper
 vendor/three.module.js           vendored Three.js r169
 vendor/addons/controls/OrbitControls.js
-tests/unit/                      simulation, collision, replay, placement, catalog
-tests/smoke/                     desktop and WebXR emulator tests
+tests/unit/                      simulation, collision, replay, catalog, OSM graph
+tests/smoke/                     desktop, real-map and WebXR emulator tests
 .github/workflows/pages.yml      GitHub Pages deployment
 ```
 
@@ -232,12 +329,42 @@ Scenarios are static JSON and no runtime map service is contacted.
   `railCrossings`, `roads`, `signs`, `stopLines`, `scenery`: visual data.
 - `caption` and `avoidance`: the rule/risk/habit text and safe replay.
 
+### Real-map document
+
+Real-map mode reads one compact document, `data/maps/healdsburg-plaza.json`,
+generated from the raw Overpass response. It contains no live service URLs.
+
+- `origin`, `bbox`, `size`: the projection origin and real-world dimensions in
+  metres. North is `−Z`.
+- `nodes` and `edges`: the routable street graph. Each edge has a polyline,
+  width, class, speed, lane count, one-way flag and `drivable` flag.
+- `buildings`: simplified footprints with a `kind` and height in metres.
+- `areas` and `streams`: parks, water, parking and stream centrelines.
+- `signals`, `stops`, `yields`: projected control positions. The runtime maps
+  stop and yield signs to the approach lane that actually faces them.
+- `stats` and `attribution`: counts shown in the UI and the required ODbL
+  credit.
+
+`src/map/graph.js` expands each edge into directed lanes, offsets them to the
+right, builds cubic junction connectors, and exposes signal timing. Parking
+aisles and driveways remain visible but are excluded from traffic when
+`drivable` is false.
+
 ## Important assumptions
 
 - This is a teaching model using **generic North American right-hand traffic**,
   not legal advice. Right-on-red, school-bus, railroad and local intersection
   rules vary by jurisdiction. The current tiles avoid jurisdiction-specific
   edge cases where possible.
+- Real-map data is a **one-time OpenStreetMap snapshot dated 2026-11-17**, not a
+  live navigation service. Streets, signs and buildings may be incomplete or
+  have changed since the extract.
+- Real-map traffic is a visual model. It is not a routing engine, a traffic
+  study or a safety certification. Signals use a simplified 24-second two-phase
+  cycle, pedestrians and cyclists are omitted, and one car reserves a junction
+  box at a time.
+- Parking aisles, driveways, private ways and emergency access are rendered for
+  context but deliberately do not carry demo traffic.
 - Signal timing is simplified: one green/yellow/all-red cycle with no pedestrian
   phase. Unprotected-left logic yields to oncoming traffic.
 - All-way stops use first-arrival order, with a right-hand tie-break for arrivals
@@ -263,11 +390,22 @@ Scenarios are static JSON and no runtime map service is contacted.
   input. Physical Quest confirmation still pending.
 - **Stage 3 — complete:** all ten scenario tiles, smooth turn/merge geometry,
   signals, all-way ordering, roundabout, train, scenario menus and full tests.
-- **Stage 4 (optional):** one-time Node converter from a small static OSM export
-  into the road-graph JSON, with uncertainty flags and no runtime OSM calls.
+- **Stage 4 — complete:** separate real-map mode with a committed OSM extract,
+  a Node converter, live traffic on the real street graph, orbit/pan/zoom
+  navigation, ride-along camera, mode switching and map tests.
+- **Stage 5 (optional):** additional extracts or a larger regional graph, plus
+  richer junction behaviour such as pedestrian phases, turn lanes and
+  roundabout-specific entry rules.
 
 ## Credits
 
 Three.js r169 (`vendor/three.module.js`) is vendored under the MIT license; see
 [`vendor/THREE-LICENSE.txt`](vendor/THREE-LICENSE.txt). The app code is MIT
 licensed; see [`LICENSE`](LICENSE).
+
+Real-map data in `data/osm/` and `data/maps/` is
+**© OpenStreetMap contributors**, available under the
+[Open Database License (ODbL) 1.0](https://www.openstreetmap.org/copyright).
+The extract is stored statically and the app does not contact OpenStreetMap
+servers at runtime. Any redistributed derivative of that data must keep the same
+attribution and ODbL terms.

@@ -38,7 +38,7 @@ export class UI {
       scrub: document.querySelector('#scrub'),
       timeCurrent: document.querySelector('#time-current'),
       timeTotal: document.querySelector('#time-total'),
-      speedButtons: [...document.querySelectorAll('.speed-button')],
+      speedButtons: [...document.querySelectorAll('.speed-button[data-speed]')],
       lesson: document.querySelector('#lesson-banner'),
       lessonTitle: document.querySelector('#lesson-title'),
       lessonText: document.querySelector('#lesson-text'),
@@ -49,11 +49,42 @@ export class UI {
       showAvoid: document.querySelector('#show-avoid'),
       tryAgain: document.querySelector('#try-again'),
       loading: document.querySelector('#loading'),
+      loadingText: document.querySelector('#loading-text'),
       error: document.querySelector('#error-screen'),
       errorMessage: document.querySelector('#error-message'),
       enterVr: document.querySelector('#enter-vr'),
       vrToast: document.querySelector('#vr-toast'),
+
+      modeSandbox: document.querySelector('#mode-sandbox'),
+      modeMap: document.querySelector('#mode-map'),
+      sandboxLegend: document.querySelector('#sandbox-legend'),
+      captionCard: document.querySelector('#caption-card'),
+      sandboxPanel: document.querySelector('#sandbox-panel'),
+
+      mapLegend: document.querySelector('#map-legend'),
+      mapInfo: document.querySelector('#map-info'),
+      mapPanel: document.querySelector('#map-panel'),
+      mapName: document.querySelector('#map-name'),
+      mapBlurb: document.querySelector('#map-blurb'),
+      mapAttribution: document.querySelector('#map-attribution'),
+      mapStatCars: document.querySelector('#map-stat-cars'),
+      mapStatMoving: document.querySelector('#map-stat-moving'),
+      mapStatSpeed: document.querySelector('#map-stat-speed'),
+      mapStatStreets: document.querySelector('#map-stat-streets'),
+      mapPlay: document.querySelector('#map-play'),
+      mapPlaySymbol: document.querySelector('#map-play-symbol'),
+      mapPlayLabel: document.querySelector('#map-play-label'),
+      mapSpeedButtons: [...document.querySelectorAll('[data-map-speed]')],
+      mapDensity: document.querySelector('#map-density'),
+      mapDensityValue: document.querySelector('#map-density-value'),
+      mapFollow: document.querySelector('#map-follow'),
+      mapResetView: document.querySelector('#map-reset-view'),
+      mapFootNote: document.querySelector('#map-foot-note'),
     };
+
+    this.mode = 'sandbox';
+    this.vrSupported = false;
+    this.mapMeta = null;
 
     this.populateScenarioMenu();
     this.setScenario(scenario);
@@ -74,6 +105,8 @@ export class UI {
   setScenario(scenario, index = 0, count = this.scenarios.length) {
     const { elements } = this;
     this.scenario = scenario;
+    this.scenarioIndex = index;
+    this.scenarioCount = count;
     elements.title.textContent = scenario.title;
     elements.subtitle.textContent = scenario.subtitle;
     elements.stage.textContent = count > 1 ? `Stage 3 · ${index + 1}/${count}` : 'Stage 3';
@@ -121,6 +154,21 @@ export class UI {
     elements.showAvoid.addEventListener('click', () => this.callbacks.onShowAvoid());
     elements.tryAgain.addEventListener('click', () => this.callbacks.onTryAgain());
 
+    elements.modeSandbox.addEventListener('click', () => this.callbacks.onMode('sandbox'));
+    elements.modeMap.addEventListener('click', () => this.callbacks.onMode('map'));
+
+    elements.mapPlay.addEventListener('click', () => this.callbacks.onMapPlayPause());
+    elements.mapFollow.addEventListener('click', () => this.callbacks.onMapFollow());
+    elements.mapResetView.addEventListener('click', () => this.callbacks.onMapResetView());
+    elements.mapDensity.addEventListener('input', () => {
+      this.callbacks.onMapDensity(Number(elements.mapDensity.value));
+    });
+    for (const button of elements.mapSpeedButtons) {
+      button.addEventListener('click', () => {
+        this.callbacks.onMapSpeed(Number(button.dataset.mapSpeed));
+      });
+    }
+
     for (const button of elements.speedButtons) {
       button.addEventListener('click', () => {
         this.callbacks.onSpeed(Number(button.dataset.speed));
@@ -142,6 +190,9 @@ export class UI {
     });
 
     window.addEventListener('keydown', (event) => {
+      if (this.mode !== 'sandbox') {
+        return;
+      }
       const target = event.target;
       if (target instanceof Element && target.closest('input, button, select, textarea')) {
         return;
@@ -216,6 +267,13 @@ export class UI {
     this.elements.lesson.hidden = true;
   }
 
+  showLoading(text) {
+    if (text) {
+      this.elements.loadingText.textContent = text;
+    }
+    this.elements.loading.classList.remove('is-hidden');
+  }
+
   hideLoading() {
     this.elements.loading.classList.add('is-hidden');
   }
@@ -231,8 +289,95 @@ export class UI {
   }
 
   setVrSupported(supported) {
-    this.elements.enterVr.hidden = !supported;
+    this.vrSupported = supported;
     this.elements.enterVr.disabled = false;
+    this.updateVrVisibility();
+  }
+
+  updateVrVisibility() {
+    this.elements.enterVr.hidden = !this.vrSupported || this.mode === 'map';
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+    const { elements } = this;
+    const isMap = mode === 'map';
+    document.body.classList.toggle('is-map', isMap);
+
+    elements.sandboxLegend.hidden = isMap;
+    elements.captionCard.hidden = isMap;
+    elements.sandboxPanel.hidden = isMap;
+    elements.mapLegend.hidden = !isMap;
+    elements.mapInfo.hidden = !isMap;
+    elements.mapPanel.hidden = !isMap;
+    this.updateVrVisibility();
+
+    elements.modeSandbox.classList.toggle('is-active', !isMap);
+    elements.modeMap.classList.toggle('is-active', isMap);
+    elements.modeSandbox.setAttribute('aria-pressed', String(!isMap));
+    elements.modeMap.setAttribute('aria-pressed', String(isMap));
+
+    if (isMap) {
+      this.hideLesson();
+      this.hideCollision();
+      elements.stage.textContent = 'Real map · OSM';
+    } else if (this.scenario) {
+      elements.title.textContent = this.scenario.title;
+      elements.subtitle.textContent = this.scenario.subtitle;
+      elements.stage.textContent = (this.scenarioCount ?? 1) > 1
+        ? `Stage 3 · ${(this.scenarioIndex ?? 0) + 1}/${this.scenarioCount}`
+        : 'Stage 3';
+    }
+  }
+
+  setMapMeta({ name, place, attribution, stats }) {
+    const { elements } = this;
+    this.mapMeta = { name, place, attribution, stats };
+    elements.title.textContent = name;
+    elements.subtitle.textContent = place ? `${place} · real street graph` : 'Real street graph';
+    elements.mapName.textContent = name;
+    elements.mapBlurb.textContent = `${place || 'OpenStreetMap extract'} · ` +
+      `${stats.roadEdges} street links and ${stats.buildings} buildings drawn from a one-time OSM extract. ` +
+      'Traffic follows one-ways, signals and stop signs. Nothing is fetched at runtime.';
+    elements.mapAttribution.textContent = attribution;
+    elements.mapStatStreets.textContent = String(stats.roadEdges);
+  }
+
+  setMapStats({ cars, moving, averageSpeed }) {
+    const { elements } = this;
+    elements.mapStatCars.textContent = String(cars);
+    elements.mapStatMoving.textContent = String(moving);
+    elements.mapStatSpeed.textContent = String(Math.round(averageSpeed * 3.6));
+  }
+
+  setMapPlaying(playing) {
+    const { elements } = this;
+    elements.mapPlaySymbol.textContent = playing ? '❚❚' : '▶';
+    elements.mapPlayLabel.textContent = playing ? 'Pause' : 'Play';
+    elements.mapPlay.setAttribute('aria-label', playing ? 'Pause traffic' : 'Play traffic');
+  }
+
+  setMapRate(rate) {
+    for (const button of this.elements.mapSpeedButtons) {
+      const active = Number(button.dataset.mapSpeed) === rate;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  setMapDensity(value) {
+    this.elements.mapDensity.value = String(value);
+    this.elements.mapDensityValue.textContent = String(value);
+  }
+
+  setFollowing(carId) {
+    const { elements } = this;
+    const following = Boolean(carId);
+    elements.mapFollow.textContent = following ? 'Stop following' : 'Ride along';
+    elements.mapFollow.classList.toggle('is-active', following);
+    elements.mapFootNote.textContent = following
+      ? 'Following a car · press Escape or Stop following to return to the map view'
+      : 'Drag to orbit · Right-drag or two-finger swipe to pan · Scroll to zoom · WASD / arrows to move the camera';
   }
 
   setVrBusy(busy) {
