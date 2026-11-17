@@ -1,71 +1,18 @@
 // A canvas-rendered, grabbable control panel that lives in the room with the
 // table. The canvas is one draw call; button hit regions are plain rectangles.
 import * as THREE from 'three';
+import {
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  COLORS,
+  PANEL_HEIGHT,
+  PANEL_WIDTH,
+  fitText,
+  paintButton,
+  roundRect,
+} from './panelKit.js';
 
-const CANVAS_WIDTH = 1400;
-const CANVAS_HEIGHT = 900;
-export const PANEL_WIDTH = 0.98;
-export const PANEL_HEIGHT = (PANEL_WIDTH * CANVAS_HEIGHT) / CANVAS_WIDTH;
-
-const COLORS = {
-  paper: '#fbf8ef',
-  ink: '#253239',
-  softInk: '#52605f',
-  muted: '#77817d',
-  line: '#d8d2c2',
-  header: '#253239',
-  blue: '#2f6fd6',
-  blueSoft: '#e5edf9',
-  orange: '#e7772f',
-  orangeSoft: '#fae9dc',
-  green: '#32634c',
-  button: '#f0ecdf',
-  buttonHover: '#e6dfcf',
-  white: '#fffdf7',
-  disabled: '#d8d2c2',
-};
-
-function roundRect(context, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + r, y);
-  context.arcTo(x + width, y, x + width, y + height, r);
-  context.arcTo(x + width, y + height, x, y + height, r);
-  context.arcTo(x, y + height, x, y, r);
-  context.arcTo(x, y, x + width, y, r);
-  context.closePath();
-}
-
-function fitText(context, text, maxWidth, maxLines = 2) {
-  const words = String(text).split(/\s+/);
-  const lines = [];
-  let line = '';
-
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (context.measureText(candidate).width <= maxWidth || line === '') {
-      line = candidate;
-    } else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line) {
-    lines.push(line);
-  }
-
-  if (lines.length <= maxLines) {
-    return lines;
-  }
-
-  const kept = lines.slice(0, maxLines);
-  let last = kept[maxLines - 1].replace(/[.,;:!?]$/, '');
-  while (last && context.measureText(`${last}…`).width > maxWidth) {
-    last = last.slice(0, -1);
-  }
-  kept[maxLines - 1] = `${last}…`;
-  return kept;
-}
+export { PANEL_HEIGHT, PANEL_WIDTH } from './panelKit.js';
 
 function formatTime(seconds) {
   const total = Math.max(0, Math.round(seconds * 1000));
@@ -653,49 +600,25 @@ export class XrControlPanel {
   }
 
   drawButton(id, x, y, width, height, label, options = {}) {
-    const { context } = this;
-    const hovered = this.hoverId === id;
-    const selected = Boolean(options.selected);
-    const primary = Boolean(options.primary);
-    const disabled = Boolean(options.disabled);
-
-    this.buttons.push({ id, x, y, w: width, h: height, enabled: !disabled });
-
-    roundRect(context, x, y, width, height, 12);
-    if (disabled) {
-      context.fillStyle = COLORS.disabled;
-    } else if (primary) {
-      context.fillStyle = hovered ? '#172126' : COLORS.ink;
-    } else if (selected) {
-      context.fillStyle = hovered ? COLORS.buttonHover : COLORS.blueSoft;
-      context.strokeStyle = '#a9c2ec';
-      context.lineWidth = 2;
-    } else {
-      context.fillStyle = hovered ? COLORS.buttonHover : COLORS.button;
-    }
-    context.fill();
-    if (selected && !disabled) {
-      context.stroke();
-    }
-
-    context.fillStyle = disabled
-      ? '#918f84'
-      : primary
-        ? COLORS.white
-        : selected
-          ? '#26508f'
-          : COLORS.ink;
-    context.font = `650 ${options.fontSize ?? 16}px system-ui, sans-serif`;
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    const maxWidth = width - 18;
-    let fontSize = options.fontSize ?? 16;
-    while (context.measureText(label).width > maxWidth && fontSize > 11) {
-      fontSize -= 1;
-      context.font = `650 ${fontSize}px system-ui, sans-serif`;
-    }
-    context.fillText(label, x + width / 2, y + height / 2 + 1);
-    context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
+    this.buttons.push({
+      id,
+      x,
+      y,
+      w: width,
+      h: height,
+      enabled: options.disabled !== true,
+    });
+    paintButton(this.context, {
+      x,
+      y,
+      width,
+      height,
+      label,
+      hovered: this.hoverId === id,
+      selected: Boolean(options.selected),
+      primary: Boolean(options.primary),
+      disabled: Boolean(options.disabled),
+      fontSize: options.fontSize ?? 16,
+    });
   }
 }

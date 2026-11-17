@@ -19,11 +19,20 @@ function normalizeAngle(angle) {
 }
 
 export class TablePlacement {
-  constructor(tableRoot) {
+  constructor(tableRoot, options = {}) {
     this.root = tableRoot;
     this.locked = false;
     this.lastViewer = null;
     this.home = null;
+    this.homeScale = options.homeScale ?? VR_TABLE_SCALE;
+    this.minScale = options.minScale ?? MIN_TABLE_SCALE;
+    this.maxScale = options.maxScale ?? MAX_TABLE_SCALE;
+    this.minHeight = options.minHeight ?? MIN_TABLE_HEIGHT;
+    this.maxHeight = options.maxHeight ?? MAX_TABLE_HEIGHT;
+    this.forwardDistance = options.forwardDistance ?? VR_FORWARD_DISTANCE;
+    this.tableHeight = options.tableHeight ?? VR_TABLE_HEIGHT;
+    this.moveSpeed = options.moveSpeed ?? 0.75;
+    this.yawOffset = options.yawOffset ?? 0;
     // Desktop keeps the original scale until the first immersive placement.
     this.root.scale.setScalar(1);
   }
@@ -34,7 +43,7 @@ export class TablePlacement {
     }
   }
 
-  /** Place the table about 1.0 m in front of the viewer, at a comfortable height. */
+  /** Place the table about 1 m in front of the viewer, at a comfortable height. */
   placeInFront(viewerPose = this.lastViewer) {
     if (!viewerPose) {
       return null;
@@ -46,13 +55,13 @@ export class TablePlacement {
     const safeForward = horizontalLength > 0.001
       ? { x: forward.x / horizontalLength, z: forward.z / horizontalLength }
       : { x: 0, z: -1 };
-    const yaw = Math.atan2(safeForward.x, safeForward.z);
+    const yaw = normalizeAngle(Math.atan2(safeForward.x, safeForward.z) + this.yawOffset);
 
-    this.root.scale.setScalar(VR_TABLE_SCALE);
+    this.root.scale.setScalar(this.homeScale);
     this.root.position.set(
-      viewerPose.position.x + safeForward.x * VR_FORWARD_DISTANCE,
-      VR_TABLE_HEIGHT,
-      viewerPose.position.z + safeForward.z * VR_FORWARD_DISTANCE,
+      viewerPose.position.x + safeForward.x * this.forwardDistance,
+      this.tableHeight,
+      viewerPose.position.z + safeForward.z * this.forwardDistance,
     );
     this.root.rotation.set(0, yaw, 0);
     this.locked = false;
@@ -60,7 +69,7 @@ export class TablePlacement {
     this.home = {
       position: this.root.position.clone(),
       yaw,
-      scale: VR_TABLE_SCALE,
+      scale: this.homeScale,
     };
 
     return this.getState();
@@ -88,7 +97,7 @@ export class TablePlacement {
   }
 
   setScale(scale) {
-    this.root.scale.setScalar(clamp(scale, MIN_TABLE_SCALE, MAX_TABLE_SCALE));
+    this.root.scale.setScalar(clamp(scale, this.minScale, this.maxScale));
   }
 
   scaleBy(factor) {
@@ -99,7 +108,7 @@ export class TablePlacement {
   }
 
   setHeight(height) {
-    this.root.position.y = clamp(height, MIN_TABLE_HEIGHT, MAX_TABLE_HEIGHT);
+    this.root.position.y = clamp(height, this.minHeight, this.maxHeight);
   }
 
   nudgeHeight(delta) {
@@ -143,7 +152,7 @@ export class TablePlacement {
     }
 
     this.lastViewer = viewerPose ?? this.lastViewer;
-    const moveSpeed = 0.75; // metres per second at full stick deflection
+    const moveSpeed = this.moveSpeed; // metres per second at full stick deflection
 
     if (left) {
       this.moveRelativeToViewer(

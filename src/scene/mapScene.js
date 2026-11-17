@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { lambert } from './builders.js';
+import { createCornerHandles } from './cornerHandles.js';
 import { MAP_CAR_LENGTH, MAP_CAR_WIDTH } from '../map/traffic.js';
 import { mulberry32 } from '../map/traffic.js';
 
@@ -508,19 +509,55 @@ export function createMapView({ renderer, document, network, traffic }) {
   fillLight.position.set(320, 200, -360);
   scene.add(fillLight);
 
+  // Immersive mode puts the miniature in a quiet room, matching the sand
+  // table's floor reference. It stays hidden on desktop.
+  const room = new THREE.Group();
+  room.name = 'map-xr-room';
+  room.visible = false;
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(3.4, 48),
+    new THREE.MeshBasicMaterial({ color: '#d8d2c3' }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  room.add(floor);
+
+  const grid = new THREE.GridHelper(6.4, 26, 0x8d958d, 0xb7b8ad);
+  grid.position.y = 0.002;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.24;
+  grid.material.depthWrite = false;
+  room.add(grid);
+
+  const roomEdge = new THREE.Mesh(
+    new THREE.RingGeometry(3.38, 3.44, 64),
+    new THREE.MeshBasicMaterial({
+      color: '#9fa89f',
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+    }),
+  );
+  roomEdge.rotation.x = -Math.PI / 2;
+  roomEdge.position.y = 0.003;
+  room.add(roomEdge);
+  scene.add(room);
+
   const width = document.size.width;
   const depth = document.size.depth;
   const pad = 64;
+  const plinthWidth = width + pad;
+  const plinthDepth = depth + pad;
 
   const plinth = new THREE.Mesh(
-    new THREE.BoxGeometry(width + pad, 14, depth + pad),
+    new THREE.BoxGeometry(plinthWidth, 14, plinthDepth),
     lambert(PALETTE.wood),
   );
   plinth.position.y = -7.1;
   root.add(plinth);
 
   const edge = new THREE.Mesh(
-    new THREE.BoxGeometry(width + pad + 3, 3.4, depth + pad + 3),
+    new THREE.BoxGeometry(plinthWidth + 3, 3.4, plinthDepth + 3),
     lambert(PALETTE.woodDark),
   );
   edge.position.y = -13.4;
@@ -605,6 +642,16 @@ export function createMapView({ renderer, document, network, traffic }) {
   const trees = createTrees(treePositions(network, document, random));
   root.add(trees);
 
+  // Corner grips sized in map units so they read as tactile 2 cm knobs once the
+  // miniature is placed in a room. Hidden outside immersive mode.
+  const handlePack = createCornerHandles(
+    { table: { playWidth: plinthWidth, playDepth: plinthDepth } },
+    { scale: 82, inset: 14, y: 0.12 },
+  );
+  handlePack.group.name = 'map-corner-handles';
+  handlePack.group.visible = false;
+  root.add(handlePack.group);
+
   // Signal heads: small, readable, and only as numerous as OSM provides.
   const signalLamps = [];
   for (const signal of document.signals) {
@@ -687,10 +734,50 @@ export function createMapView({ renderer, document, network, traffic }) {
   let dragging = false;
   let dragStart = null;
   let active = false;
+  let xrActive = false;
+  let desktopCameraState = null;
 
   function setActive(value) {
     active = value;
-    controls.enabled = value && !following;
+    controls.enabled = value && !following && !xrActive;
+  }
+
+  function enterXrMode() {
+    if (xrActive) {
+      return;
+    }
+    xrActive = true;
+    desktopCameraState = {
+      position: camera.position.clone(),
+      target: controls.target.clone(),
+    };
+    stopFollowing();
+    controls.enabled = false;
+    room.visible = true;
+  }
+
+  function setXrPlaced(placed) {
+    handlePack.group.visible = Boolean(placed) && xrActive;
+  }
+
+  function exitXrMode() {
+    if (!xrActive) {
+      return;
+    }
+    xrActive = false;
+    handlePack.group.visible = false;
+    room.visible = false;
+    root.position.set(0, 0, 0);
+    root.rotation.set(0, 0, 0);
+    root.scale.setScalar(1);
+    controls.enabled = active && !following;
+    if (desktopCameraState) {
+      camera.position.copy(desktopCameraState.position);
+      controls.target.copy(desktopCameraState.target);
+      camera.lookAt(controls.target);
+      controls.update();
+      desktopCameraState = null;
+    }
   }
 
   function frameAll() {
@@ -901,10 +988,12 @@ export function createMapView({ renderer, document, network, traffic }) {
   window.addEventListener('resize', resize);
 
   function update(dt) {
-    applyKeys();
-    updateFollow(dt);
-    if (!following) {
-      controls.update();
+    if (!xrActive) {
+      applyKeys();
+      updateFollow(dt);
+      if (!following) {
+        controls.update();
+      }
     }
     updateCars(traffic.getSnapshots());
 
@@ -933,12 +1022,25 @@ export function createMapView({ renderer, document, network, traffic }) {
     camera,
     controls,
     root,
+    plinthWidth,
+    plinthDepth,
+    tableBounds: {
+      halfWidth: plinthWidth * 0.5 + 4,
+      halfDepth: plinthDepth * 0.5 + 4,
+      surfaceTolerance: 10,
+    },
+    get cornerHandles() {
+      return handlePack.handles;
+    },
     frameAll,
     resetView,
     follow,
     stopFollowing,
     carAt,
     setActive,
+    enterXrMode,
+    exitXrMode,
+    setXrPlaced,
     set onFollowChange(handler) {
       onFollowChange = handler;
     },
@@ -947,6 +1049,9 @@ export function createMapView({ renderer, document, network, traffic }) {
     },
     get following() {
       return Boolean(following);
+    },
+    get xrActive() {
+      return xrActive;
     },
     update,
     render,

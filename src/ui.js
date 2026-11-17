@@ -295,7 +295,7 @@ export class UI {
   }
 
   updateVrVisibility() {
-    this.elements.enterVr.hidden = !this.vrSupported || this.mode === 'map';
+    this.elements.enterVr.hidden = !this.vrSupported;
   }
 
   setMode(mode) {
