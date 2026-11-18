@@ -1,4 +1,20 @@
 import { test, expect } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
+
+// The 3-mile Yorkville extract is ~1M flat-shaded triangles. Under the
+// software renderer used by CI every interaction takes seconds, so give the
+// map specs a generous budget.
+test.describe.configure({ timeout: 180_000 });
+
+const DEFAULT_ID = 'yorkville-heartland';
+const DEFAULT_NAME = 'Heartland · Yorkville';
+const DEFAULT_PLACE = 'Yorkville, Illinois';
+const CONVERTED_FIXTURE = fileURLToPath(
+  new URL('../../data/maps/healdsburg-plaza.json', import.meta.url),
+);
+const RAW_FIXTURE = fileURLToPath(
+  new URL('../../data/osm/healdsburg-plaza.raw.json', import.meta.url),
+);
 
 async function openMap(page, path = '/?mode=map') {
   const consoleErrors = [];
@@ -32,20 +48,25 @@ function expectClean(errors) {
   expect(errors.failedRequests).toEqual([]);
 }
 
-test('the real map loads from the static extract and runs traffic', async ({ page }) => {
+test('the real map loads the committed Heartland extract and runs traffic', async ({ page }) => {
   const errors = await openMap(page);
   const state = await page.evaluate(() => window.__roadMap.getState());
 
-  expect(state.id).toBe('healdsburg-plaza');
-  expect(state.name).toBe('Healdsburg Plaza');
-  expect(state.place).toBe('Healdsburg, California');
+  expect(state.id).toBe(DEFAULT_ID);
+  expect(state.name).toBe(DEFAULT_NAME);
+  expect(state.place).toBe(DEFAULT_PLACE);
+  expect(state.isDefault).toBe(true);
   expect(state.attribution).toBe('© OpenStreetMap contributors · ODbL 1.0');
+  expect(state.size.width).toBeGreaterThan(9000);
+  expect(state.size.depth).toBeGreaterThan(9000);
   expect(state.stats.cars).toBe(64);
-  expect(state.network.edges).toBeGreaterThan(200);
-  expect(state.network.buildings).toBeGreaterThan(250);
-  expect(state.network.signals).toBe(2);
+  expect(state.network.edges).toBeGreaterThan(10_000);
+  expect(state.network.buildings).toBeGreaterThan(8000);
+  expect(state.network.signals).toBe(80);
   expect(state.render.calls).toBeGreaterThan(10);
-  expect(state.camera.distance).toBeGreaterThan(500);
+  // The overview camera scales with the extract instead of sitting at the
+  // Healdsburg distance.
+  expect(state.camera.distance).toBeGreaterThan(5000);
 
   await expect(page.locator('#map-info')).toBeVisible();
   await expect(page.locator('#map-legend')).toBeVisible();
@@ -53,7 +74,10 @@ test('the real map loads from the static extract and runs traffic', async ({ pag
   await expect(page.locator('#caption-card')).toBeHidden();
   await expect(page.locator('#sandbox-panel')).toBeHidden();
   await expect(page.locator('#mode-map')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#map-name')).toHaveText(DEFAULT_NAME);
   await expect(page.locator('#map-attribution')).toHaveText('© OpenStreetMap contributors · ODbL 1.0');
+  await expect(page.locator('#map-default')).toBeHidden();
+  await expect(page.locator('#map-load-note')).toContainText('Nothing is fetched at runtime');
 
   const before = await page.evaluate(() => window.__roadMap.getCars());
   await page.waitForTimeout(900);
@@ -155,6 +179,86 @@ test('the mode switch works both ways without disturbing the sand table', async 
   await page.locator('#mode-sandbox').click();
   await page.waitForFunction(() => window.__sandTable.getState().mode === 'sandbox');
   expect((await page.evaluate(() => window.__sandTable.getState())).collision).toBeNull();
+
+  expectClean(errors);
+});
+
+test('a saved converted map file loads from disk without a service call', async ({ page }) => {
+  const errors = await openMap(page);
+
+  await page.locator('#map-file').setInputFiles(CONVERTED_FIXTURE);
+  await page.waitForFunction(
+    (id) => window.__roadMap.getState().id === id,
+    'healdsburg-plaza',
+  );
+  await page.waitForFunction(() => window.__roadMap.getState().stats.moving > 5);
+
+  const state = await page.evaluate(() => window.__roadMap.getState());
+  expect(state.id).toBe('healdsburg-plaza');
+  expect(state.name).toBe('Healdsburg Plaza');
+  expect(state.isDefault).toBe(false);
+  expect(state.network.edges).toBe(237);
+  expect(state.network.buildings).toBe(322);
+  // The replacement map gets its own scale-appropriate camera.
+  expect(state.camera.distance).toBeLessThan(1500);
+
+  await expect(page.locator('#map-name')).toHaveText('Healdsburg Plaza');
+  await expect(page.locator('#map-load-note')).toContainText('healdsburg-plaza.json');
+  await expect(page.locator('#map-default')).toBeVisible();
+
+  expectClean(errors);
+});
+
+test('a raw Overpass response converts in the browser and the default can be restored', async ({ page }) => {
+  const errors = await openMap(page);
+
+  await page.locator('#map-file').setInputFiles(RAW_FIXTURE);
+  await page.waitForFunction(() => window.__roadMap.getState().isDefault === false);
+  await page.waitForFunction(() => window.__roadMap.getState().stats.moving > 5);
+
+  const custom = await page.evaluate(() => window.__roadMap.getState());
+  expect(custom.id).toMatch(/^custom-/);
+  expect(custom.place).toBe('Loaded from your device');
+  // Converted in the browser from the raw Overpass response, so it may include
+  // a few ways that the committed extract clipped to its bounds.
+  expect(custom.network.edges).toBeGreaterThan(200);
+  await expect(page.locator('#map-load-note')).toContainText('healdsburg-plaza.raw.json');
+
+  await page.locator('#map-default').click();
+  await page.waitForFunction(
+    (id) => window.__roadMap.getState().id === id,
+    DEFAULT_ID,
+  );
+  await page.waitForFunction(() => window.__roadMap.getState().stats.moving > 10);
+
+  const restored = await page.evaluate(() => window.__roadMap.getState());
+  expect(restored.isDefault).toBe(true);
+  expect(restored.name).toBe(DEFAULT_NAME);
+  await expect(page.locator('#map-name')).toHaveText(DEFAULT_NAME);
+  await expect(page.locator('#map-default')).toBeHidden();
+
+  expectClean(errors);
+});
+
+test('a file that is not a map keeps the current extract running', async ({ page }) => {
+  const errors = await openMap(page);
+
+  await page.locator('#map-file').setInputFiles({
+    name: 'notes.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ hello: 'world' })),
+  });
+  await expect(page.locator('#map-load-note')).toContainText('Could not load notes.json');
+  await expect(page.locator('#map-load-note')).toHaveClass(/is-error/);
+
+  const state = await page.evaluate(() => window.__roadMap.getState());
+  expect(state.id).toBe(DEFAULT_ID);
+  expect(state.isDefault).toBe(true);
+  // The failed file must not stop the map that is already running.
+  const before = await page.evaluate(() => window.__roadMap.getCars());
+  await page.waitForTimeout(600);
+  const after = await page.evaluate(() => window.__roadMap.getCars());
+  expect(after).not.toEqual(before);
 
   expectClean(errors);
 });

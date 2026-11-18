@@ -93,7 +93,7 @@
 
       <section class="caption-card is-map-card" id="map-info" aria-labelledby="map-info-heading" hidden>
         <p class="kicker" id="map-info-heading">OpenStreetMap · real street graph</p>
-        <p class="rule-text" id="map-name">Healdsburg Plaza</p>
+        <p class="rule-text" id="map-name">Heartland · Yorkville</p>
         <p class="risk-text" id="map-blurb">
           Cars are generated on the actual street network, following one-way
           signs, signals and stop signs. Nothing is fetched from OSM at runtime.
@@ -105,6 +105,12 @@
           <div class="map-stat"><strong id="map-stat-streets">–</strong><span>street links</span></div>
         </div>
         <p class="map-attribution" id="map-attribution">© OpenStreetMap contributors · ODbL 1.0</p>
+        <div class="map-loader">
+          <button id="map-load" class="map-load-button" type="button">Load OSM file…</button>
+          <button id="map-default" class="map-load-button is-ghost" type="button" hidden>Default map</button>
+          <input id="map-file" type="file" accept=".json,application/json" hidden>
+        </div>
+        <p class="map-load-note" id="map-load-note" role="status">Saved Overpass JSON or a converted map file. The file stays on this device.</p>
       </section>
 
       <div id="lesson-banner" class="lesson-banner" role="status" aria-live="polite" hidden>

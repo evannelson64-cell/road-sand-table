@@ -1,8 +1,9 @@
-// One-time OSM extract converter.
+// OSM extract converter, shared by the build-time CLI and the in-browser loader.
 //
-// Turns a small Overpass API response into the static, compact road-graph JSON
-// the app loads at runtime. Nothing in this file runs in the browser, and the
-// app never contacts an OSM service — the converted file is committed.
+// Turns an Overpass API response into the compact road-graph JSON the app
+// loads at runtime. The app itself never contacts an OSM service; the saved
+// response is either converted once and committed, or chosen by the user from
+// their own disk.
 //
 // The output deliberately keeps only what the visual sand table needs:
 // a routable street graph, building footprints, green/blue/parking areas,

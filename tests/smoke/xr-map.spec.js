@@ -6,10 +6,11 @@ test.use({
   xrStereoEnabled: false,
 });
 
-test.describe.configure({ timeout: 90_000 });
+test.describe.configure({ timeout: 240_000 });
 
 const PANEL_ORIGIN = [0.3, 1.24, -0.32];
-const DEFAULT_MAP_SCALE = 1.68 / 687.4;
+// The miniature is 1.68 m wide across the widest side of the ~10.2 km plinth.
+const DEFAULT_MAP_SCALE = 1.68 / 10219.176;
 
 async function state(page) {
   return page.evaluate(() => window.__roadMap.getState());
@@ -37,7 +38,7 @@ async function enterMapVr(page, xr) {
   await page.waitForFunction(() => window.__roadMapReady === true);
   await page.waitForFunction(() => window.__roadMap.getState().stats.moving > 10);
   await expect(page.locator('#enter-vr')).toBeVisible();
-  await xr.enterVR({ button: '#enter-vr', timeout: 20_000 });
+  await xr.enterVR({ button: '#enter-vr', timeout: 120_000 });
   await page.waitForFunction(() => window.__roadMap.getState().xr.active === true);
   await page.waitForFunction(() => window.__roadMap.getState().xr.placed === true);
   await xr.waitForFrames(4);
@@ -156,7 +157,13 @@ test('the real map becomes a room-scale table in immersive VR', async ({ page, x
   expect(current.paused).toBe(false);
   expect(current.xr.table.scale).toBeCloseTo(1, 5);
   expect(current.camera.distance).toBeGreaterThan(300);
-  expect(current.camera.near).toBeCloseTo(1, 2);
+  // The desktop near plane is scale-aware for a 10 km extract, not the old
+  // fixed 1 unit.
+  const desktopNear = Math.max(
+    1,
+    Math.max(current.size.width, current.size.depth) * 0.0016,
+  );
+  expect(current.camera.near).toBeCloseTo(desktopNear, 1);
 
   // The sand table still works after map VR.
   await page.locator('#mode-sandbox').click();
@@ -178,7 +185,7 @@ test('entering VR from the sandbox still works after the map has loaded', async 
   await page.waitForFunction(() => window.__sandTable.getState().mode === 'sandbox');
 
   await expect(page.locator('#enter-vr')).toBeVisible();
-  await xr.enterVR({ button: '#enter-vr', timeout: 20_000 });
+  await xr.enterVR({ button: '#enter-vr', timeout: 120_000 });
   await page.waitForFunction(() => window.__sandTable.getState().xr.placed === true);
   await xr.waitForFrames(3);
 

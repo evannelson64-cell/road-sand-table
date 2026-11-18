@@ -1,6 +1,11 @@
 import { test, expect } from 'playwright-webxr';
 import { aimQuaternion } from 'playwright-webxr/examples/aim-controller';
 
+// Immersive VR runs through Chromium's software renderer on CI, where every
+// synthetic frame costs far more than on a GPU. The extra budget keeps the
+// sandbox VR specs from tripping the 45 s default on slower machines.
+test.describe.configure({ timeout: 120_000 });
+
 test.use({
   xrDeviceName: 'metaQuest2',
   xrStereoEnabled: false,

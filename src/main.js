@@ -12,10 +12,11 @@ import { MapXrPanel } from './xr/mapPanel.js';
 import { XrInput } from './xr/input.js';
 import { buildRoadNetwork } from './map/graph.js';
 import { MapTraffic } from './map/traffic.js';
+import { convertOverpass } from './map/osmGraph.js';
 import { createMapView } from './scene/mapScene.js';
 
 const CATALOG_URL = new URL('../data/scenarios.json', import.meta.url);
-const MAP_URL = new URL('../data/maps/healdsburg-plaza.json', import.meta.url);
+const DEFAULT_MAP_URL = new URL('../data/maps/yorkville-heartland.json', import.meta.url);
 const MAX_STEPS_PER_RENDER = 8;
 const XR_UI_INTERVAL_MS = 250;
 const MAP_FIXED_DT = 1 / 60;
@@ -87,6 +88,8 @@ function start() {
   let mapDocument = null;
   let mapNetwork = null;
   let mapLoading = false;
+  let defaultMapDocument = null;
+  let mapIsDefault = false;
   let mapPaused = false;
   let mapRate = 1;
   let mapCarCount = MAP_DEFAULT_CARS;
@@ -163,6 +166,9 @@ function start() {
       locked: mapPlacement.locked,
       scale,
       tableWidth: (mapView?.plinthWidth ?? 0) * scale,
+      mapWidth: mapDocument?.size?.width ?? 0,
+      name: mapDocument?.name ?? 'Heartland · Yorkville',
+      place: mapDocument?.place ?? 'Yorkville, Illinois',
       handTracking,
     });
   }
@@ -607,6 +613,8 @@ function start() {
         name: mapDocument.name,
         place: mapDocument.place,
         attribution: mapDocument.attribution,
+        isDefault: mapIsDefault,
+        size: mapDocument.size,
         paused: mapPaused,
         rate: mapRate,
         following: mapView.followId,
@@ -648,70 +656,126 @@ function start() {
     window.__roadMapReady = true;
   }
 
-  async function ensureMapLoaded() {
-    if (mapView) {
-      return true;
-    }
-    if (mapLoading) {
-      return false;
-    }
-    mapLoading = true;
-    ui.showLoading('Charting real streets from OpenStreetMap…');
-    try {
-      mapDocument = await fetchJson(MAP_URL);
-      if (!Array.isArray(mapDocument.edges) || mapDocument.edges.length === 0) {
-        throw new Error('The map extract has no street edges.');
+  function normalizeMapDocument(input) {
+    const nodes = Array.isArray(input.nodes) ? input.nodes : [];
+    const edges = Array.isArray(input.edges) ? input.edges : [];
+    let width = Number(input.size?.width);
+    let depth = Number(input.size?.depth);
+    if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) {
+      let maxX = 0;
+      let maxZ = 0;
+      for (const node of nodes) {
+        maxX = Math.max(maxX, Math.abs(node.x));
+        maxZ = Math.max(maxZ, Math.abs(node.z));
       }
-      mapNetwork = buildRoadNetwork(mapDocument);
-      mapTraffic = new MapTraffic(mapNetwork, {
-        carCount: mapCarCount,
-        seed: 0x5eed1234,
-      });
-      mapView = createMapView({
-        renderer: world.renderer,
-        document: mapDocument,
-        network: mapNetwork,
-        traffic: mapTraffic,
-      });
-      mapView.onFollowChange = (carId) => ui.setFollowing(carId);
-      mapView.setActive(false);
+      width = maxX * 2 + 100;
+      depth = maxZ * 2 + 100;
+    }
+    const buildings = Array.isArray(input.buildings) ? input.buildings : [];
+    const stats = {
+      ...(input.stats ?? {}),
+      roadNodes: input.stats?.roadNodes ?? nodes.length,
+      roadEdges: input.stats?.roadEdges ?? edges.length,
+      buildings: input.stats?.buildings ?? buildings.length,
+    };
+    return {
+      ...input,
+      id: input.id ?? 'custom-osm',
+      name: input.name ?? 'Custom OSM extract',
+      place: input.place ?? 'Loaded from your device',
+      attribution: input.attribution ?? '© OpenStreetMap contributors · ODbL 1.0',
+      source: input.source ?? 'User-loaded map file',
+      nodes,
+      edges,
+      buildings,
+      areas: Array.isArray(input.areas) ? input.areas : [],
+      streams: Array.isArray(input.streams) ? input.streams : [],
+      signals: Array.isArray(input.signals) ? input.signals : [],
+      stops: Array.isArray(input.stops) ? input.stops : [],
+      yields: Array.isArray(input.yields) ? input.yields : [],
+      size: { width, depth },
+      stats,
+    };
+  }
 
-      const span = Math.max(mapView.plinthWidth, mapView.plinthDepth);
-      mapPlacement = new TablePlacement(mapView.root, {
-        homeScale: MAP_VR_WIDTH / span,
-        minScale: MAP_VR_MIN_WIDTH / span,
-        maxScale: MAP_VR_MAX_WIDTH / span,
-        forwardDistance: MAP_VR_FORWARD,
-        tableHeight: MAP_VR_HEIGHT,
-        moveSpeed: 0.9,
-        // North is −Z in the extract; keep it pointing away from the viewer.
-        yawOffset: Math.PI,
-      });
+  function createMapPlacement(view) {
+    const span = Math.max(view.plinthWidth, view.plinthDepth);
+    return new TablePlacement(view.root, {
+      homeScale: MAP_VR_WIDTH / span,
+      minScale: MAP_VR_MIN_WIDTH / span,
+      maxScale: MAP_VR_MAX_WIDTH / span,
+      forwardDistance: MAP_VR_FORWARD,
+      tableHeight: MAP_VR_HEIGHT,
+      moveSpeed: 0.9,
+      // North is −Z in the extract; keep it pointing away from the viewer.
+      yawOffset: Math.PI,
+    });
+  }
 
-      mapPanel = new MapXrPanel({
-        onPlayPause: () => setMapPaused(!mapPaused),
-        onSpeed: setMapRate,
-        onDensity: (delta) => setMapDensity(mapCarCount + delta),
-        onToggleLock: togglePlacementLock,
-        onResetTable: resetTablePosition,
-        onNudgeHeight: nudgeTableHeight,
-        onRotate: rotateTable,
-        onScale: scaleTable,
-        onExitVr: () => xrManager?.exit(),
-      });
-      mapView.scene.add(mapPanel.root);
+  function createMapPanel() {
+    return new MapXrPanel({
+      onPlayPause: () => setMapPaused(!mapPaused),
+      onSpeed: setMapRate,
+      onDensity: (delta) => setMapDensity(mapCarCount + delta),
+      onToggleLock: togglePlacementLock,
+      onResetTable: resetTablePosition,
+      onNudgeHeight: nudgeTableHeight,
+      onRotate: rotateTable,
+      onScale: scaleTable,
+      onExitVr: () => xrManager?.exit(),
+    });
+  }
 
+  function mapWorld(view) {
+    return {
+      tableRoot: view.root,
+      tableBounds: view.tableBounds,
+      get cornerHandles() {
+        return view.cornerHandles;
+      },
+    };
+  }
+
+  function installMapDocument(input, { isDefault = false } = {}) {
+    const doc = normalizeMapDocument(input);
+    if (doc.edges.length === 0) {
+      throw new Error('The map extract has no street edges.');
+    }
+
+    const network = buildRoadNetwork(doc);
+    const traffic = new MapTraffic(network, {
+      carCount: mapCarCount,
+      seed: 0x5eed1234,
+    });
+    const view = createMapView({
+      renderer: world.renderer,
+      document: doc,
+      network,
+      traffic,
+    });
+    view.onFollowChange = (carId) => ui.setFollowing(carId);
+
+    if (!mapPanel) {
+      mapPanel = createMapPanel();
+    }
+    view.scene.add(mapPanel.root);
+    mapPanel.setVisible(false);
+
+    const placement = createMapPlacement(view);
+    const targetWorld = mapWorld(view);
+    if (mapInput) {
+      mapInput.rebind({
+        scene: view.scene,
+        world: targetWorld,
+        placement,
+        panel: mapPanel,
+      });
+    } else {
       mapInput = new XrInput({
         renderer: world.renderer,
-        scene: mapView.scene,
-        world: {
-          tableRoot: mapView.root,
-          tableBounds: mapView.tableBounds,
-          get cornerHandles() {
-            return mapView.cornerHandles;
-          },
-        },
-        placement: mapPlacement,
+        scene: view.scene,
+        world: targetWorld,
+        placement,
         panel: mapPanel,
         callbacks: {
           onHandTracking: (tracked) => {
@@ -720,10 +784,60 @@ function start() {
           },
         },
       });
-      mapInput.setActive(false);
-      refreshMapXrPanel();
+    }
+    mapInput.setActive(false);
 
-      publishRoadMapSurface();
+    const previousView = mapView;
+    mapView = view;
+    mapTraffic = traffic;
+    mapNetwork = network;
+    mapDocument = doc;
+    mapPlacement = placement;
+    mapIsDefault = isDefault;
+    mapAccumulator = 0;
+
+    if (previousView) {
+      previousView.dispose();
+    }
+
+    refreshMapXrPanel();
+    publishRoadMapSurface();
+
+    if (mode === 'map') {
+      mapView.setActive(!xrActive);
+      ui.setMapMeta({
+        name: doc.name,
+        place: doc.place,
+        attribution: doc.attribution,
+        stats: doc.stats,
+        custom: !isDefault,
+      });
+      ui.setMapStats(traffic.getStats());
+      ui.setMapRate(mapRate);
+      ui.setMapDensity(mapCarCount);
+      ui.setMapPlaying(!mapPaused);
+      ui.setFollowing(null);
+      document.title = `${doc.name} · Road Sand Table`;
+    }
+
+    return true;
+  }
+
+  async function ensureMapLoaded() {
+    if (mapView) {
+      return true;
+    }
+    if (mapLoading) {
+      return false;
+    }
+    mapLoading = true;
+    ui.showLoading('Charting Heartland streets from OpenStreetMap…');
+    try {
+      defaultMapDocument ??= await fetchJson(DEFAULT_MAP_URL);
+      installMapDocument(defaultMapDocument, { isDefault: true });
+      ui.setMapLoadNote(
+        'Committed Heartland · Yorkville extract. Nothing is fetched at runtime.',
+      );
       return true;
     } catch (error) {
       console.error(error);
@@ -731,6 +845,87 @@ function start() {
       return false;
     } finally {
       mapLoading = false;
+      ui.hideLoading();
+    }
+  }
+
+  async function loadMapFile(file) {
+    if (!file) {
+      return false;
+    }
+    if (xrActive) {
+      ui.showVrToast('Exit VR before loading another map.');
+      return false;
+    }
+    mapLoading = true;
+    ui.setMapFileBusy(true);
+    ui.setMapLoadNote(`Reading ${file.name}…`);
+    ui.showLoading(`Reading ${file.name}…`);
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+
+    try {
+      const parsed = JSON.parse(await file.text());
+      let doc;
+      if (Array.isArray(parsed.elements)) {
+        const baseName = file.name
+          .replace(/\.json$/i, '')
+          .replace(/[-_]+/g, ' ')
+          .trim();
+        doc = convertOverpass(parsed, {
+          id: `custom-${Date.now()}`,
+          name: baseName || 'Custom OSM extract',
+          place: 'Loaded from your device',
+          source: `User-loaded Overpass JSON, ${new Date().toISOString().slice(0, 10)}`,
+        });
+      } else if (Array.isArray(parsed.edges)) {
+        doc = parsed;
+      } else {
+        throw new Error('Expected an Overpass response or a converted map document.');
+      }
+
+      installMapDocument(doc, { isDefault: false });
+      ui.setMapLoadNote(
+        `Loaded ${file.name} · ${doc.edges.length.toLocaleString('en-US')} street links.`,
+      );
+      return true;
+    } catch (error) {
+      // A user-chosen file that is not a map is a normal outcome, not an app
+      // error, so keep it out of the console error channel.
+      console.warn(error);
+      ui.setMapLoadNote(`Could not load ${file.name}: ${error.message}`, true);
+      ui.showVrToast(`That map could not be loaded: ${error.message}`);
+      return false;
+    } finally {
+      mapLoading = false;
+      ui.setMapFileBusy(false);
+      ui.hideLoading();
+    }
+  }
+
+  async function loadDefaultMap() {
+    if (xrActive) {
+      ui.showVrToast('Exit VR before switching maps.');
+      return false;
+    }
+    mapLoading = true;
+    ui.setMapFileBusy(true);
+    ui.showLoading('Returning to the committed Heartland extract…');
+    try {
+      defaultMapDocument ??= await fetchJson(DEFAULT_MAP_URL);
+      installMapDocument(defaultMapDocument, { isDefault: true });
+      ui.setMapLoadNote(
+        'Committed Heartland · Yorkville extract. Nothing is fetched at runtime.',
+      );
+      return true;
+    } catch (error) {
+      console.error(error);
+      ui.setMapLoadNote(`Could not restore the default map: ${error.message}`, true);
+      return false;
+    } finally {
+      mapLoading = false;
+      ui.setMapFileBusy(false);
       ui.hideLoading();
     }
   }
@@ -768,12 +963,18 @@ function start() {
         place: mapDocument.place,
         attribution: mapDocument.attribution,
         stats: mapDocument.stats,
+        custom: !mapIsDefault,
       });
       ui.setMapStats(mapTraffic.getStats());
       ui.setMapRate(mapRate);
       ui.setMapDensity(mapCarCount);
       ui.setMapPlaying(!mapPaused);
       ui.setFollowing(null);
+      ui.setMapLoadNote(
+        mapIsDefault
+          ? 'Committed Heartland · Yorkville extract. Nothing is fetched at runtime.'
+          : `${mapDocument.name} · loaded from your own OSM file. The file stays on this device.`,
+      );
 
       document.title = `${mapDocument.name} · Road Sand Table`;
       const url = new URL(window.location.href);
@@ -1146,6 +1347,8 @@ function start() {
         onMapDensity: setMapDensity,
         onMapFollow: toggleMapFollow,
         onMapResetView: resetMapView,
+        onMapFile: loadMapFile,
+        onMapDefault: loadDefaultMap,
       });
       ui.setScenario(scenario, scenarioIndex, catalog.scenarios.length);
       ui.setBehavior(behaviorId);

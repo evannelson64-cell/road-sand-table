@@ -13,7 +13,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { convertOverpass } from './lib/osm-graph.mjs';
+import { convertOverpass } from '../src/map/osmGraph.js';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
