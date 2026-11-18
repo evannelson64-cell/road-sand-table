@@ -71,6 +71,10 @@ export class UI {
       mapStatMoving: document.querySelector('#map-stat-moving'),
       mapStatSpeed: document.querySelector('#map-stat-speed'),
       mapStatStreets: document.querySelector('#map-stat-streets'),
+      mapLoad: document.querySelector('#map-load'),
+      mapFile: document.querySelector('#map-file'),
+      mapDefault: document.querySelector('#map-default'),
+      mapLoadNote: document.querySelector('#map-load-note'),
       mapPlay: document.querySelector('#map-play'),
       mapPlaySymbol: document.querySelector('#map-play-symbol'),
       mapPlayLabel: document.querySelector('#map-play-label'),
@@ -160,6 +164,15 @@ export class UI {
     elements.mapPlay.addEventListener('click', () => this.callbacks.onMapPlayPause());
     elements.mapFollow.addEventListener('click', () => this.callbacks.onMapFollow());
     elements.mapResetView.addEventListener('click', () => this.callbacks.onMapResetView());
+    elements.mapLoad.addEventListener('click', () => elements.mapFile.click());
+    elements.mapFile.addEventListener('change', () => {
+      const [file] = elements.mapFile.files ?? [];
+      if (file) {
+        this.callbacks.onMapFile(file);
+      }
+      elements.mapFile.value = '';
+    });
+    elements.mapDefault.addEventListener('click', () => this.callbacks.onMapDefault());
     elements.mapDensity.addEventListener('input', () => {
       this.callbacks.onMapDensity(Number(elements.mapDensity.value));
     });
@@ -323,6 +336,7 @@ export class UI {
       elements.stage.textContent = 'Real map · OSM';
     } else if (this.scenario) {
       elements.title.textContent = this.scenario.title;
+      elements.title.classList.remove('is-long');
       elements.subtitle.textContent = this.scenario.subtitle;
       elements.stage.textContent = (this.scenarioCount ?? 1) > 1
         ? `Stage 3 · ${(this.scenarioIndex ?? 0) + 1}/${this.scenarioCount}`
@@ -330,17 +344,31 @@ export class UI {
     }
   }
 
-  setMapMeta({ name, place, attribution, stats }) {
+  setMapMeta({ name, place, attribution, stats, custom = false }) {
     const { elements } = this;
-    this.mapMeta = { name, place, attribution, stats };
+    this.mapMeta = { name, place, attribution, stats, custom };
     elements.title.textContent = name;
+    elements.title.classList.toggle('is-long', name.length > 16);
     elements.subtitle.textContent = place ? `${place} · real street graph` : 'Real street graph';
     elements.mapName.textContent = name;
     elements.mapBlurb.textContent = `${place || 'OpenStreetMap extract'} · ` +
-      `${stats.roadEdges} street links and ${stats.buildings} buildings drawn from a one-time OSM extract. ` +
-      'Traffic follows one-ways, signals and stop signs. Nothing is fetched at runtime.';
+      `${stats.roadEdges} street links and ${stats.buildings} buildings. ` +
+      (custom
+        ? 'Loaded from your saved OSM file. Nothing is uploaded or fetched at runtime.'
+        : 'Drawn from the committed OSM extract. Nothing is fetched at runtime.');
     elements.mapAttribution.textContent = attribution;
     elements.mapStatStreets.textContent = String(stats.roadEdges);
+    elements.mapDefault.hidden = !custom;
+  }
+
+  setMapLoadNote(text, isError = false) {
+    this.elements.mapLoadNote.textContent = text;
+    this.elements.mapLoadNote.classList.toggle('is-error', isError);
+  }
+
+  setMapFileBusy(busy) {
+    this.elements.mapLoad.disabled = Boolean(busy);
+    this.elements.mapLoad.textContent = busy ? 'Loading…' : 'Load OSM file…';
   }
 
   setMapStats({ cars, moving, averageSpeed }) {

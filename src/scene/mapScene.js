@@ -30,6 +30,11 @@ const PALETTE = {
   trunk: '#7b5f45',
 };
 
+const SIGNAL_DIM = new THREE.Color('#3b3f3d');
+const SIGNAL_RED = new THREE.Color('#e05b4f');
+const SIGNAL_YELLOW = new THREE.Color('#e7c565');
+const SIGNAL_GREEN = new THREE.Color('#7fc08a');
+
 const BUILDING_COLORS = {
   house: ['#eadcc4', '#e4d4bb', '#efe3cf', '#ddcdb6'],
   retail: ['#e8d8bc', '#e2cdae', '#e9d9c0'],
@@ -132,7 +137,7 @@ function segmentDistanceSq(px, pz, ax, az, bx, bz) {
   return (px - x) ** 2 + (pz - z) ** 2;
 }
 
-function buildBuildingsGeometry(buildings) {
+function buildBuildingsGeometry(buildings, { roofsOnly = false } = {}) {
   const positions = [];
   const colors = [];
   const indices = [];
@@ -161,37 +166,39 @@ function buildBuildingsGeometry(buildings) {
     const bodyHeight = Math.max(0.1, height - band);
     const [cx, cz] = ringCentroid(ring);
 
-    for (let edge = 0; edge < ring.length; edge += 1) {
-      const [ax, az] = ring[edge];
-      const [bx, bz] = ring[(edge + 1) % ring.length];
-      const dx = bx - ax;
-      const dz = bz - az;
-      if (Math.abs(dx) + Math.abs(dz) < 0.05) {
-        continue;
+    if (!roofsOnly) {
+      for (let edge = 0; edge < ring.length; edge += 1) {
+        const [ax, az] = ring[edge];
+        const [bx, bz] = ring[(edge + 1) % ring.length];
+        const dx = bx - ax;
+        const dz = bz - az;
+        if (Math.abs(dx) + Math.abs(dz) < 0.05) {
+          continue;
+        }
+        const shade = Math.abs(dx) > Math.abs(dz) ? WALL_SHADE_Z : WALL_SHADE_X;
+        const bandShade = shade * 0.83;
+        const base = positions.length / 3;
+        positions.push(
+          ax, 0, az,
+          bx, 0, bz,
+          bx, bodyHeight, bz,
+          ax, bodyHeight, az,
+          bx, height, bz,
+          ax, height, az,
+        );
+        for (let vertex = 0; vertex < 4; vertex += 1) {
+          colors.push(color.r * shade, color.g * shade, color.b * shade);
+        }
+        for (let vertex = 0; vertex < 2; vertex += 1) {
+          colors.push(color.r * bandShade, color.g * bandShade, color.b * bandShade);
+        }
+        indices.push(
+          base, base + 1, base + 2,
+          base, base + 2, base + 3,
+          base + 3, base + 2, base + 4,
+          base + 3, base + 4, base + 5,
+        );
       }
-      const shade = Math.abs(dx) > Math.abs(dz) ? WALL_SHADE_Z : WALL_SHADE_X;
-      const bandShade = shade * 0.83;
-      const base = positions.length / 3;
-      positions.push(
-        ax, 0, az,
-        bx, 0, bz,
-        bx, bodyHeight, bz,
-        ax, bodyHeight, az,
-        bx, height, bz,
-        ax, height, az,
-      );
-      for (let vertex = 0; vertex < 4; vertex += 1) {
-        colors.push(color.r * shade, color.g * shade, color.b * shade);
-      }
-      for (let vertex = 0; vertex < 2; vertex += 1) {
-        colors.push(color.r * bandShade, color.g * bandShade, color.b * bandShade);
-      }
-      indices.push(
-        base, base + 1, base + 2,
-        base, base + 2, base + 3,
-        base + 3, base + 2, base + 4,
-        base + 3, base + 4, base + 5,
-      );
     }
 
     // A centroid fan is robust enough for hand-mapped footprints and gives the
@@ -289,33 +296,189 @@ function buildDashes(edges) {
   return transforms;
 }
 
-function makeAreaMesh(area) {
-  const shape = new THREE.Shape();
-  area.points.forEach(([x, z], index) => {
-    if (index === 0) {
-      shape.moveTo(x, -z);
-    } else {
-      shape.lineTo(x, -z);
+const AREA_COLORS = {
+  park: PALETTE.park,
+  green: PALETTE.green,
+  water: PALETTE.water,
+  parking: PALETTE.parking,
+  plaza: PALETTE.plaza,
+};
+
+function buildAreaGeometries(areas) {
+  const buckets = new Map();
+
+  for (const area of areas) {
+    if (!Array.isArray(area.points) || area.points.length < 3) {
+      continue;
     }
+    const shape = new THREE.Shape();
+    area.points.forEach(([x, z], index) => {
+      if (index === 0) {
+        shape.moveTo(x, -z);
+      } else {
+        shape.lineTo(x, -z);
+      }
+    });
+    shape.closePath();
+
+    const geometry = new THREE.ShapeGeometry(shape);
+    geometry.rotateX(-Math.PI / 2);
+    const position = geometry.getAttribute('position');
+    const index = geometry.getIndex();
+    const kind = AREA_COLORS[area.kind] ? area.kind : 'green';
+    let bucket = buckets.get(kind);
+    if (!bucket) {
+      bucket = { positions: [], indices: [] };
+      buckets.set(kind, bucket);
+    }
+    const start = bucket.positions.length / 3;
+    for (let vertex = 0; vertex < position.count; vertex += 1) {
+      bucket.positions.push(
+        position.getX(vertex),
+        position.getY(vertex),
+        position.getZ(vertex),
+      );
+    }
+    if (index) {
+      for (let vertex = 0; vertex < index.count; vertex += 1) {
+        bucket.indices.push(index.getX(vertex) + start);
+      }
+    } else {
+      for (let vertex = 0; vertex < position.count; vertex += 1) {
+        bucket.indices.push(start + vertex);
+      }
+    }
+    geometry.dispose();
+  }
+
+  const result = new Map();
+  for (const [kind, bucket] of buckets) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(bucket.positions, 3),
+    );
+    geometry.setIndex(bucket.indices);
+    const normals = new Float32Array(bucket.positions.length);
+    for (let index = 1; index < normals.length; index += 3) {
+      normals[index] = 1;
+    }
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    result.set(kind, geometry);
+  }
+  return result;
+}
+
+function buildingGrid(buildings, cellSize = 64) {
+  const cells = new Map();
+  const entries = buildings.map((building) => {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of building.points) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    return { ring: building.points, minX, maxX, minZ, maxZ };
   });
-  shape.closePath();
-  const geometry = new THREE.ShapeGeometry(shape);
-  geometry.rotateX(-Math.PI / 2);
 
-  const color = {
-    park: PALETTE.park,
-    green: PALETTE.green,
-    water: PALETTE.water,
-    parking: PALETTE.parking,
-    plaza: PALETTE.plaza,
-  }[area.kind] ?? PALETTE.green;
+  for (const entry of entries) {
+    const minCellX = Math.floor(entry.minX / cellSize);
+    const maxCellX = Math.floor(entry.maxX / cellSize);
+    const minCellZ = Math.floor(entry.minZ / cellSize);
+    const maxCellZ = Math.floor(entry.maxZ / cellSize);
+    for (let cx = minCellX; cx <= maxCellX; cx += 1) {
+      for (let cz = minCellZ; cz <= maxCellZ; cz += 1) {
+        const key = `${cx}:${cz}`;
+        let list = cells.get(key);
+        if (!list) {
+          list = [];
+          cells.set(key, list);
+        }
+        list.push(entry);
+      }
+    }
+  }
 
-  return new THREE.Mesh(geometry, lambert(color));
+  return {
+    cellSize,
+    cells,
+    contains(x, z) {
+      const list = cells.get(`${Math.floor(x / cellSize)}:${Math.floor(z / cellSize)}`);
+      if (!list) {
+        return false;
+      }
+      return list.some((entry) => (
+        x >= entry.minX &&
+        x <= entry.maxX &&
+        z >= entry.minZ &&
+        z <= entry.maxZ &&
+        pointInRing(x, z, entry.ring)
+      ));
+    },
+  };
+}
+
+function roadGrid(edges, cellSize = 64) {
+  const cells = new Map();
+
+  for (const edge of edges) {
+    const reach = edge.width * 0.5 + 3.2;
+    for (let index = 1; index < edge.points.length; index += 1) {
+      const [ax, az] = edge.points[index - 1];
+      const [bx, bz] = edge.points[index];
+      const segment = { ax, az, bx, bz, reachSq: reach * reach };
+      const minX = Math.min(ax, bx) - reach;
+      const maxX = Math.max(ax, bx) + reach;
+      const minZ = Math.min(az, bz) - reach;
+      const maxZ = Math.max(az, bz) + reach;
+      for (
+        let cx = Math.floor(minX / cellSize);
+        cx <= Math.floor(maxX / cellSize);
+        cx += 1
+      ) {
+        for (
+          let cz = Math.floor(minZ / cellSize);
+          cz <= Math.floor(maxZ / cellSize);
+          cz += 1
+        ) {
+          const key = `${cx}:${cz}`;
+          let list = cells.get(key);
+          if (!list) {
+            list = [];
+            cells.set(key, list);
+          }
+          list.push(segment);
+        }
+      }
+    }
+  }
+
+  return {
+    cellSize,
+    cells,
+    blocked(x, z) {
+      const list = cells.get(`${Math.floor(x / cellSize)}:${Math.floor(z / cellSize)}`);
+      if (!list) {
+        return false;
+      }
+      return list.some((segment) => (
+        segmentDistanceSq(x, z, segment.ax, segment.az, segment.bx, segment.bz) <
+        segment.reachSq
+      ));
+    },
+  };
 }
 
 function treePositions(network, document, random) {
   const trees = [];
-  const buildingRings = document.buildings.map((building) => building.points);
+  const buildings = buildingGrid(document.buildings);
+  const roads = roadGrid(network.edges);
+  const span = Math.max(document.size.width, document.size.depth);
+  const largeMap = span > 4000;
 
   for (const area of document.areas) {
     if (!['park', 'green', 'plaza'].includes(area.kind)) {
@@ -332,7 +495,10 @@ function treePositions(network, document, random) {
       maxZ = Math.max(maxZ, z);
     }
     const areaSq = Math.abs(signedArea(area.points));
-    const target = Math.min(70, Math.max(4, Math.round(areaSq / 150)));
+    // A 3-mile extract is viewed from kilometres away, so a handful of tree
+    // dots per green area reads the same as dozens and costs far less.
+    const maxPerArea = largeMap ? 12 : 70;
+    const target = Math.min(maxPerArea, Math.max(4, Math.round(areaSq / 150)));
     let placed = 0;
     for (let attempt = 0; attempt < target * 8 && placed < target; attempt += 1) {
       const x = minX + random() * (maxX - minX);
@@ -340,7 +506,7 @@ function treePositions(network, document, random) {
       if (!pointInRing(x, z, area.points)) {
         continue;
       }
-      if (buildingRings.some((ring) => pointInRing(x, z, ring))) {
+      if (buildings.contains(x, z)) {
         continue;
       }
       trees.push({ x, z, scale: 0.7 + random() * 0.8 });
@@ -348,13 +514,14 @@ function treePositions(network, document, random) {
     }
   }
 
-  const edges = network.edges;
+  const spacing = largeMap ? 90 : 26;
+  const chance = largeMap ? 0.12 : 0.34;
   for (const lane of network.lanes) {
-    if (!lane.drivable || lane.length < 26) {
+    if (!lane.drivable || lane.length < spacing) {
       continue;
     }
-    for (let distance = 14; distance < lane.length - 10; distance += 26) {
-      if (random() > 0.34) {
+    for (let distance = 14; distance < lane.length - 10; distance += spacing) {
+      if (random() > chance) {
         continue;
       }
       const step = Math.min(lane.path.points.length - 1, Math.floor((distance / lane.length) * (lane.path.points.length - 1)));
@@ -367,21 +534,7 @@ function treePositions(network, document, random) {
       const x = point.x - (dz / length) * offset;
       const z = point.z + (dx / length) * offset;
 
-      let blocked = false;
-      for (const edge of edges) {
-        for (let index = 1; index < edge.points.length; index += 1) {
-          const [ax, az] = edge.points[index - 1];
-          const [bx, bz] = edge.points[index];
-          if (segmentDistanceSq(x, z, ax, az, bx, bz) < (edge.width * 0.5 + 2.6) ** 2) {
-            blocked = true;
-            break;
-          }
-        }
-        if (blocked) {
-          break;
-        }
-      }
-      if (blocked || buildingRings.some((ring) => pointInRing(x, z, ring))) {
+      if (roads.blocked(x, z) || buildings.contains(x, z)) {
         continue;
       }
       trees.push({ x, z, scale: 0.65 + random() * 0.7 });
@@ -390,6 +543,7 @@ function treePositions(network, document, random) {
 
   return trees;
 }
+
 
 function createTrees(trees) {
   const group = new THREE.Group();
@@ -483,16 +637,22 @@ function copyPose(matrix, x, z, heading, y, scale = 1) {
 
 export function createMapView({ renderer, document, network, traffic }) {
   const scene = new THREE.Scene();
+  const span = Math.max(document.size.width, document.size.depth);
   scene.background = new THREE.Color('#e2e9e6');
-  scene.fog = new THREE.Fog('#e2e9e6', 620, 1900);
+  scene.fog = new THREE.Fog('#e2e9e6', span, span * 3);
 
-  const camera = new THREE.PerspectiveCamera(40, 1, 1, 4000);
+  const camera = new THREE.PerspectiveCamera(
+    40,
+    1,
+    Math.max(1, span * 0.0016),
+    Math.max(4000, span * 4),
+  );
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.screenSpacePanning = false;
-  controls.minDistance = 26;
-  controls.maxDistance = 2200;
+  controls.minDistance = Math.max(26, span * 0.004);
+  controls.maxDistance = Math.max(2200, span * 2.2);
   controls.minPolarAngle = 0.12;
   controls.maxPolarAngle = Math.PI * 0.47;
 
@@ -545,71 +705,91 @@ export function createMapView({ renderer, document, network, traffic }) {
 
   const width = document.size.width;
   const depth = document.size.depth;
-  const pad = 64;
+  const pad = Math.max(64, span * 0.02);
   const plinthWidth = width + pad;
   const plinthDepth = depth + pad;
 
+  // Across ~10 km a 16 m near plane leaves roughly a metre of depth resolution
+  // at the far edge, so stacked flat layers would z-fight into stripes. Polygon
+  // offset separates them without moving any real geometry.
+  const largeMap = span > 4000;
+  const depthOffset = (factor) => (largeMap
+    ? {
+      polygonOffset: true,
+      polygonOffsetFactor: factor,
+      polygonOffsetUnits: factor,
+    }
+    : {});
+
   const plinth = new THREE.Mesh(
     new THREE.BoxGeometry(plinthWidth, 14, plinthDepth),
-    lambert(PALETTE.wood),
+    lambert(PALETTE.wood, depthOffset(4)),
   );
   plinth.position.y = -7.1;
   root.add(plinth);
 
   const edge = new THREE.Mesh(
     new THREE.BoxGeometry(plinthWidth + 3, 3.4, plinthDepth + 3),
-    lambert(PALETTE.woodDark),
+    lambert(PALETTE.woodDark, depthOffset(4)),
   );
   edge.position.y = -13.4;
   root.add(edge);
 
   const sand = new THREE.Mesh(
     new THREE.PlaneGeometry(width + pad - 6, depth + pad - 6),
-    lambert(PALETTE.sand),
+    lambert(PALETTE.sand, depthOffset(2)),
   );
   sand.rotation.x = -Math.PI / 2;
   sand.position.y = 0.02;
   root.add(sand);
 
-  const areaGroup = new THREE.Group();
-  areaGroup.name = 'map-areas';
-  for (const area of document.areas) {
-    const mesh = makeAreaMesh(area);
+  for (const [kind, geometry] of buildAreaGeometries(document.areas)) {
+    const mesh = new THREE.Mesh(
+      geometry,
+      lambert(AREA_COLORS[kind], depthOffset(0)),
+    );
     mesh.position.y = 0.035;
-    areaGroup.add(mesh);
+    root.add(mesh);
   }
-  root.add(areaGroup);
 
-  const sidewalk = new THREE.Mesh(
-    buildRoadGeometry(network.edges, 3.4),
-    lambert(PALETTE.sidewalk),
-  );
-  sidewalk.position.y = 0.055;
-  root.add(sidewalk);
+  // A 3.4 m sidewalk ribbon is sub-pixel once the extract spans kilometres.
+  if (span <= 4000) {
+    const sidewalk = new THREE.Mesh(
+      buildRoadGeometry(network.edges, 3.4),
+      lambert(PALETTE.sidewalk, depthOffset(0)),
+    );
+    sidewalk.position.y = 0.055;
+    root.add(sidewalk);
+  }
 
   const roads = new THREE.Mesh(
     buildRoadGeometry(network.edges, 0),
-    lambert(PALETTE.road),
+    lambert(PALETTE.road, depthOffset(-1)),
   );
   roads.position.y = 0.085;
   root.add(roads);
 
-  const streams = new THREE.Group();
+  const streamPositions = [];
+  const streamIndices = [];
   for (const stream of document.streams ?? []) {
-    const positions = [];
-    const indices = [];
-    appendRibbon(positions, indices, stream.points, stream.width, 0);
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, lambert(PALETTE.stream));
-    mesh.position.y = 0.04;
-    streams.add(mesh);
+    appendRibbon(streamPositions, streamIndices, stream.points, stream.width, 0);
   }
-  root.add(streams);
+  if (streamPositions.length > 0) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(streamPositions, 3),
+    );
+    geometry.setIndex(streamIndices);
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, lambert(PALETTE.stream, depthOffset(0)));
+    mesh.position.y = 0.04;
+    root.add(mesh);
+  }
 
-  const dashTransforms = buildDashes(network.edges);
+  // Lane dashes are 16 cm wide: below a pixel once the extract spans
+  // kilometres, so skip the instancing work entirely on large maps.
+  const dashTransforms = span > 4000 ? [] : buildDashes(network.edges);
   if (dashTransforms.length > 0) {
     const dashGeometry = new THREE.BoxGeometry(0.16, 0.02, 2.6);
     const dashes = new THREE.InstancedMesh(
@@ -627,13 +807,13 @@ export function createMapView({ renderer, document, network, traffic }) {
     root.add(dashes);
   }
 
-  const buildingGeometry = buildBuildingsGeometry(document.buildings);
+  const buildingMaterial = new THREE.MeshLambertMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+  });
   const buildings = new THREE.Mesh(
-    buildingGeometry,
-    new THREE.MeshLambertMaterial({
-      vertexColors: true,
-      side: THREE.DoubleSide,
-    }),
+    buildBuildingsGeometry(document.buildings),
+    buildingMaterial,
   );
   buildings.name = 'map-buildings';
   root.add(buildings);
@@ -642,52 +822,105 @@ export function createMapView({ renderer, document, network, traffic }) {
   const trees = createTrees(treePositions(network, document, random));
   root.add(trees);
 
+  // In VR the miniature is viewed at roughly 1:6000: a 7 m wall is about a
+  // millimetre tall and a tree crown smaller still. Swap in roof-only
+  // footprints and hide the trees so the headset isn't asked to draw triangles
+  // the eye cannot resolve. Desktop keeps the full model.
+  let vrBuildings = null;
+  const setVrDetail = (enabled) => {
+    if (!largeMap) {
+      return;
+    }
+    if (enabled && !vrBuildings) {
+      vrBuildings = new THREE.Mesh(
+        buildBuildingsGeometry(document.buildings, { roofsOnly: true }),
+        buildingMaterial,
+      );
+      vrBuildings.name = 'map-buildings-vr';
+      root.add(vrBuildings);
+    }
+    buildings.visible = !enabled;
+    trees.visible = !enabled;
+    if (vrBuildings) {
+      vrBuildings.visible = enabled;
+    }
+  };
+
   // Corner grips sized in map units so they read as tactile 2 cm knobs once the
   // miniature is placed in a room. Hidden outside immersive mode.
   const handlePack = createCornerHandles(
     { table: { playWidth: plinthWidth, playDepth: plinthDepth } },
-    { scale: 82, inset: 14, y: 0.12 },
+    {
+      scale: Math.max(82, plinthWidth * 0.119),
+      inset: Math.max(14, plinthWidth * 0.0204),
+      y: 0.02,
+    },
   );
   handlePack.group.name = 'map-corner-handles';
   handlePack.group.visible = false;
   root.add(handlePack.group);
 
   // Signal heads: small, readable, and only as numerous as OSM provides.
+  // Instances keep a 3-mile extract at three draw calls instead of hundreds.
   const signalLamps = [];
-  for (const signal of document.signals) {
-    const pole = new THREE.Mesh(
+  let signalLampMesh = null;
+  if (document.signals.length > 0) {
+    const count = document.signals.length;
+    const poles = new THREE.InstancedMesh(
       new THREE.CylinderGeometry(0.16, 0.2, 6.4, 6),
       lambert('#5c615f'),
+      count,
     );
-    pole.position.set(signal.x, 3.2, signal.z);
-    root.add(pole);
-
-    const head = new THREE.Mesh(
+    const heads = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.9, 2.4, 0.5),
       lambert('#3c4240'),
+      count,
     );
-    head.position.set(signal.x, 6.6, signal.z);
-    root.add(head);
+    signalLampMesh = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.24, 8, 6),
+      new THREE.MeshBasicMaterial({ color: '#ffffff' }),
+      count * 3,
+    );
+    const matrix = new THREE.Matrix4();
+    const dim = new THREE.Color('#3b3f3d');
+    const headOffset = new THREE.Vector3(0, 0, 0.3);
 
-    const lamps = [];
-    for (let index = 0; index < 3; index += 1) {
-      const material = new THREE.MeshBasicMaterial({ color: '#3b3f3d' });
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), material);
-      lamp.position.set(signal.x, 7.35 - index * 0.72, signal.z + 0.3);
-      root.add(lamp);
-      lamps.push(material);
-    }
-    let node = null;
-    let bestDistance = 30;
-    for (const candidate of network.nodes) {
-      const distance = Math.hypot(candidate.x - signal.x, candidate.z - signal.z);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        node = candidate;
+    document.signals.forEach(([x, z], signalIndex) => {
+      matrix.makeTranslation(x, 3.2, z);
+      poles.setMatrixAt(signalIndex, matrix);
+      matrix.makeTranslation(x, 6.6, z);
+      heads.setMatrixAt(signalIndex, matrix);
+
+      for (let index = 0; index < 3; index += 1) {
+        matrix.makeTranslation(
+          x + headOffset.x,
+          7.35 - index * 0.72,
+          z + headOffset.z,
+        );
+        const lampIndex = signalIndex * 3 + index;
+        signalLampMesh.setMatrixAt(lampIndex, matrix);
+        signalLampMesh.setColorAt(lampIndex, dim);
       }
+
+      let node = null;
+      let bestDistance = 30;
+      for (const candidate of network.nodes) {
+        const distance = Math.hypot(candidate.x - x, candidate.z - z);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          node = candidate;
+        }
+      }
+      const lane = node?.incoming[0] ?? null;
+      signalLamps.push({ start: signalIndex * 3, axis: lane?.axis ?? 'NS' });
+    });
+
+    for (const mesh of [poles, heads, signalLampMesh]) {
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.frustumCulled = false;
+      root.add(mesh);
     }
-    const lane = node?.incoming[0] ?? null;
-    signalLamps.push({ lamps, axis: lane?.axis ?? 'NS' });
+    signalLampMesh.instanceColor.needsUpdate = true;
   }
 
   const carMeshes = createCarMeshes();
@@ -760,6 +993,7 @@ export function createMapView({ renderer, document, network, traffic }) {
     stopFollowing();
     controls.enabled = false;
     room.visible = true;
+    setVrDetail(true);
   }
 
   function setXrPlaced(placed) {
@@ -773,6 +1007,7 @@ export function createMapView({ renderer, document, network, traffic }) {
     xrActive = false;
     handlePack.group.visible = false;
     room.visible = false;
+    setVrDetail(false);
     root.position.set(0, 0, 0);
     root.rotation.set(0, 0, 0);
     root.scale.setScalar(1);
@@ -1006,19 +1241,55 @@ export function createMapView({ renderer, document, network, traffic }) {
     updateCars(traffic.getSnapshots());
 
     const phase = traffic.time % 24;
-    for (const signal of signalLamps) {
-      const green = signal.axis === 'NS' ? phase < 10 : phase >= 12 && phase < 22;
-      const yellow = signal.axis === 'NS'
-        ? phase >= 10 && phase < 11.5
-        : phase >= 22 && phase < 23.5;
-      signal.lamps[0].color.set(green || yellow ? '#3b3f3d' : '#e05b4f');
-      signal.lamps[1].color.set(yellow ? '#e7c565' : '#3b3f3d');
-      signal.lamps[2].color.set(green ? '#7fc08a' : '#3b3f3d');
+    if (signalLampMesh) {
+      for (const signal of signalLamps) {
+        const green = signal.axis === 'NS' ? phase < 10 : phase >= 12 && phase < 22;
+        const yellow = signal.axis === 'NS'
+          ? phase >= 10 && phase < 11.5
+          : phase >= 22 && phase < 23.5;
+        signalLampMesh.setColorAt(
+          signal.start,
+          green || yellow ? SIGNAL_DIM : SIGNAL_RED,
+        );
+        signalLampMesh.setColorAt(
+          signal.start + 1,
+          yellow ? SIGNAL_YELLOW : SIGNAL_DIM,
+        );
+        signalLampMesh.setColorAt(
+          signal.start + 2,
+          green ? SIGNAL_GREEN : SIGNAL_DIM,
+        );
+      }
+      signalLampMesh.instanceColor.needsUpdate = true;
     }
   }
 
   function render() {
     renderer.render(scene, camera);
+  }
+
+  function dispose() {
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('resize', resize);
+    renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+    renderer.domElement.removeEventListener('pointerup', onPointerUp);
+    controls.dispose();
+    const disposeObject = (object) => {
+      if (object.geometry) {
+        object.geometry.dispose();
+      }
+      if (object.material) {
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        for (const material of materials) {
+          material.dispose();
+        }
+      }
+    };
+    root.traverse(disposeObject);
+    room.traverse(disposeObject);
   }
 
   frameAll();
@@ -1035,7 +1306,9 @@ export function createMapView({ renderer, document, network, traffic }) {
     tableBounds: {
       halfWidth: plinthWidth * 0.5 + 4,
       halfDepth: plinthDepth * 0.5 + 4,
-      surfaceTolerance: 10,
+      // Keep the interactive surface about 2.4 cm thick in the room,
+      // regardless of how many metres the extract spans.
+      surfaceTolerance: Math.max(10, plinthWidth * 0.0145),
     },
     get cornerHandles() {
       return handlePack.handles;
@@ -1064,5 +1337,6 @@ export function createMapView({ renderer, document, network, traffic }) {
     update,
     render,
     resize,
+    dispose,
   };
 }

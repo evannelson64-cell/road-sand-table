@@ -131,6 +131,12 @@ button {
   letter-spacing: -0.025em;
 }
 
+/* Long extract names stay on one line instead of pushing the subtitle into
+   the info card below. */
+.brand-card h1.is-long {
+  font-size: clamp(24px, 2.4vw, 33px);
+}
+
 .scene-subtitle {
   margin: 5px 0 0;
   color: var(--ink-soft);
@@ -1107,6 +1113,47 @@ button:disabled {
   color: var(--muted);
   font-size: 10.5px;
   line-height: 1.4;
+}
+
+.map-loader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.map-load-button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.map-load-button:hover {
+  border-color: var(--forest);
+  color: var(--ink);
+  background: rgba(50, 99, 76, 0.08);
+}
+
+.map-load-button.is-ghost {
+  background: transparent;
+}
+
+.map-load-note {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.map-load-note.is-error {
+  color: #a43d2c;
 }
 
 .map-panel {

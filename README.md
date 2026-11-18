@@ -6,8 +6,9 @@ experience on Meta Quest.
 
 There are now **two ways to explore it**: the original ten-scenario sand table,
 and a separate **real map** mode built from a one-time OpenStreetMap extract of
-Healdsburg Plaza, California. Switching modes never changes or unloads the other
-scene.
+**Heartland in Yorkville, Illinois** — a 3-mile-radius slice of Kendall County
+streets and farmland. Switching modes never changes or unloads the other scene,
+and you can drop in your own saved OSM file at any time.
 
 > **Current status: Stage 3 complete — ten scenario tiles — plus the Stage 4
 > real-street map, desktop and immersive.** The immersive flow passes automated
@@ -27,7 +28,7 @@ scene.
 
 ![The same sand table in immersive VR](docs/stage-3-vr.png)
 
-![Real map overview of Healdsburg Plaza with live traffic](docs/stage-4-map-overview.png)
+![Real map overview of the Heartland, Yorkville extract with live traffic](docs/stage-4-map-overview.png)
 
 ![Ride-along camera following a car on the real street graph](docs/stage-4-map-follow.png)
 
@@ -68,60 +69,86 @@ The segmented control at the top of the page switches between **Sand table** and
 same WebGL renderer, so the scenario simulation and all ten sand-table layouts
 stay exactly as they were.
 
-- **Place:** Healdsburg Plaza, Healdsburg, California.
-- **Extract:** 237 street links, 176 junctions, 322 building footprints, parks,
-  parking areas, streams, 2 signals, 17 stop signs and 5 yield signs.
+- **Place:** Heartland, Yorkville, Illinois.
+- **Extract:** a 3-mile-radius (~10 km × 10 km) slice with 19,462 street links,
+  18,073 junctions, 12,116 building footprints, 1,138 areas, 89 streams,
+  80 signals, 96 stop signs and 5 yield signs.
 - **Traffic:** 64 cars by default, drawn from the static street graph. Cars use
   right-hand offset lanes, follow the car ahead, obey one-way streets, simple
   two-phase signals and approach-mapped stop/yield signs, and take one junction
   box at a time. Density is adjustable from 0 to 180 cars.
 - **Camera:** orbit, pan, scroll/pinch zoom, and `WASD` / arrow keys. `Q` / `E`
   rotate; `+` / `−` zoom. Click any car, or press **Ride along**, to follow it.
-  `Escape` returns to the overview.
+  `Escape` returns to the overview. The overview distance, fog and zoom limits
+  scale with the extract, so a 10 km slice and a 600 m plaza both frame well.
 - **Controls:** pause/play, 0.5× / 1× / 2× traffic speed, density, ride along and
   reset view. The info card reports live cars, moving cars, average speed and
   street-link count.
+- **Your own map:** **Load OSM file…** accepts either a saved Overpass JSON
+  response (anything with an `elements` array) or an already-converted map
+  document. The file is read in the browser, converted with the same code as the
+  CLI, and swapped in without a reload. **Default map** restores Yorkville.
+  Nothing is uploaded anywhere.
 - **Deep link:** add `?mode=map` to open the real map directly.
 - **VR:** **Enter VR** places the same map as a 1.7 m room-scale miniature at
   table height, with a matching world-space panel for pause/play, speed,
   density and placement. Grip any corner to slide it, twist to rotate and use
   two grips to scale; the sticks move, lift and turn the table. The miniature
-  uses the same traffic, signals, buildings and ODbL credit as desktop.
+  uses the same traffic, signals, buildings and ODbL credit as desktop, and its
+  panel shows the extract name, width and true scale ratio.
 - **No runtime service calls:** the browser only reads the committed
-  `data/maps/healdsburg-plaza.json` file. It never contacts Overpass or any other
-  map API.
+  `data/maps/yorkville-heartland.json` file, or a file you pick from your own
+  disk. It never contacts Overpass or any other map API.
 
 The low-poly treatment deliberately matches the sand table: flat-shaded
 buildings with muted roofs, a wooden plinth, paper-and-sand colours, no textures,
-no shadows, and the same calm typography.
+no shadows, and the same calm typography. Large extracts skip details that fall
+below a pixel at overview distance — lane dashes, sidewalks and most trees — so
+the 3-mile map stays smooth without dropping streets or buildings.
 
 ### Map data pipeline
 
-The extract is committed once and converted ahead of time:
+The default extract is committed once and converted ahead of time:
 
 ```text
-data/osm/healdsburg-plaza.query.overpassql   documented Overpass query
-data/osm/healdsburg-plaza.raw.json           raw one-time Overpass response
-scripts/lib/osm-graph.mjs                    projection, graph splitting, tags
-scripts/osm-to-graph.mjs                     converter CLI
-data/maps/healdsburg-plaza.json              static document loaded by the app
+data/osm/yorkville-heartland.query.overpassql   documented Overpass query
+data/osm/yorkville-heartland.raw.json           raw Overpass response (not committed)
+src/map/osmGraph.js                             projection, graph splitting, tags
+scripts/osm-to-graph.mjs                        converter CLI
+data/maps/yorkville-heartland.json              static document loaded by the app
 ```
 
-Regenerate the app document after replacing the raw extract:
+The default is regenerated with:
 
 ```bash
 node scripts/osm-to-graph.mjs \
-  data/osm/healdsburg-plaza.raw.json \
-  data/maps/healdsburg-plaza.json \
-  --id=healdsburg-plaza \
-  --name="Healdsburg Plaza" \
-  --place="Healdsburg, California" \
-  --bounds=38.6078,-122.8730,38.6134,-122.8665 \
+  data/osm/yorkville-heartland.raw.json \
+  data/maps/yorkville-heartland.json \
+  --id=yorkville-heartland \
+  --name="Heartland · Yorkville" \
+  --place="Yorkville, Illinois" \
+  --bounds=41.610,-88.490,41.700,-88.370 \
   --source="Overpass API extract, 2026-11-17"
 ```
 
 The converter keeps a `drivable` flag on every edge. Parking aisles, driveways,
 private ways and emergency access stay visible but do not carry demo traffic.
+The same module runs in the browser, which is how **Load OSM file…** accepts raw
+Overpass responses without any build step.
+
+### Load your own map
+
+1. Open **Real map**.
+2. Press **Load OSM file…** and choose a `.json` file:
+   - a saved Overpass API response (any document with an `elements` array), or
+   - a converted map document (any document with an `edges` array).
+3. The street graph, buildings, areas and traffic rebuild in place. The info
+   card shows the new name, place and street-link count, and **Default map**
+   brings back Heartland · Yorkville.
+
+The file is read with the browser's `File` API and converted locally. Nothing
+is uploaded, and the page makes no network request for it. Very large extracts
+will take a few seconds to parse; the 3-mile default is about 9.4 MB.
 
 ## What works
 
@@ -213,23 +240,25 @@ at its previous state when you exit.
 ## Test it
 
 ```bash
-npm test                  # 29 Node unit tests
+npm test                  # 31 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 14 browser tests: 4 sand-table + 5 real-map + 5 WebXR
+npm run test:smoke        # 17 browser tests: 4 sand-table + 8 real-map + 5 WebXR
 npm run test:all          # both
 ```
 
 The unit suite loads **all ten scenario JSON files** and requires each correct
 preset to be collision-free for 30 simulated seconds **and** each failure preset
 to produce a collision. It also covers collision math, exact replay, placement
-clamping and the scenario catalog. The map tests re-run the OSM converter,
-check the committed map document is reproducible from the raw extract, validate
+clamping and the scenario catalog. The map tests re-run the OSM converter against
+the small Healdsburg fixture, check the committed Yorkville document, validate
 lane and approach-control invariants, and run the traffic model for 40 simulated
 seconds to check for NaNs, stuck fleets and deterministic seeds.
 
 The desktop smoke tests cover the original sand table and the real map: mode
 switching, static map loading, live traffic, pause, speed, density, ride along,
-`Escape`, and a clean return to `?mode=`-less sand-table state.
+`Escape`, loading a converted map file, converting a raw Overpass response in
+the browser, restoring the default map, and a clean return to `?mode=`-less
+sand-table state.
 
 The WebXR tests use Meta's **Immersive Web Emulation Runtime (IWER)** through
 [`playwright-webxr`](https://www.npmjs.com/package/playwright-webxr), with the
@@ -240,7 +269,7 @@ review and the safe replay. The map tests verify the room-scale miniature,
 traffic play/pause and speed inside VR, density changes, placement controls,
 stick movement, locking, panel buttons and a clean return to both desktop modes.
 
-Last local verification: **29/29 unit tests and 14/14 Playwright tests passing**
+Last local verification: **31/31 unit tests and 17/17 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures
@@ -336,7 +365,7 @@ data/scenarios.json              scenario catalog and menu order
 data/scenario-*.json             ten hand-authored tiles
 data/osm/                        documented Overpass query and raw one-time extract
 data/maps/                       converted static map documents
-scripts/lib/osm-graph.mjs        OSM projection, graph splitting and tag handling
+src/map/osmGraph.js              OSM projection, graph splitting and tag handling
 scripts/osm-to-graph.mjs         one-time Overpass JSON converter CLI
 scripts/preview-map.mjs          README screenshot helper
 vendor/three.module.js           vendored Three.js r169
@@ -366,8 +395,10 @@ Scenarios are static JSON and no runtime map service is contacted.
 
 ### Real-map document
 
-Real-map mode reads one compact document, `data/maps/healdsburg-plaza.json`,
-generated from the raw Overpass response. It contains no live service URLs.
+Real-map mode reads one compact document,
+`data/maps/yorkville-heartland.json`, generated from the raw Overpass response.
+The same loader accepts any saved Overpass response or converted document, and
+nothing contains a live service URL.
 
 - `origin`, `bbox`, `size`: the projection origin and real-world dimensions in
   metres. North is `−Z`.

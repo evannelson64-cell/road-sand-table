@@ -30,6 +30,9 @@ export class MapXrPanel {
       locked: false,
       scale: 1,
       tableWidth: 0,
+      mapWidth: 0,
+      name: 'Heartland · Yorkville',
+      place: 'Yorkville, Illinois',
       handTracking: false,
     };
     this.buttons = [];
@@ -227,7 +230,8 @@ export class MapXrPanel {
 
     context.fillStyle = COLORS.white;
     context.font = '600 36px Georgia, serif';
-    context.fillText('Healdsburg Plaza', 58, 107);
+    const title = fitText(context, state.name, 430, 1)[0];
+    context.fillText(title, 58, 107);
 
     this.drawPill(530, 48, state.playing ? 'LIVE' : 'PAUSED', state.playing ? '#2e5f4a' : '#7b6549');
 
@@ -297,8 +301,10 @@ export class MapXrPanel {
     context.fillStyle = COLORS.muted;
     context.font = '400 15px system-ui, sans-serif';
     context.fillText('© OpenStreetMap contributors · ODbL 1.0', leftX, 742);
+    const mapWidth = state.mapWidth > 0 ? `${(state.mapWidth / 1000).toFixed(1)} km` : '—';
+    const ratio = state.scale > 0 ? Math.round(1 / state.scale).toLocaleString('en-US') : '—';
     context.fillText(
-      `${state.handTracking ? 'Hands tracked' : 'Controllers'} · table ${Math.round((state.tableWidth ?? 0) * 100)} cm wide`,
+      `${state.handTracking ? 'Hands tracked' : 'Controllers'} · ${mapWidth} extract · 1:${ratio}`,
       leftX,
       771,
     );
@@ -375,7 +381,7 @@ export class MapXrPanel {
     context.font = '400 16px system-ui, sans-serif';
     context.fillText('Grip a corner to move or twist. Two grips scale.', rightX, 624);
     context.fillText('Left stick moves · right stick height / rotate.', rightX, 651);
-    context.fillText('Lean in to read the streets; the model is 1:350.', rightX, 678);
+    context.fillText('Lean in to read the streets; the model is true to scale.', rightX, 678);
 
     this.drawButton('map-exit-vr', 1180, 730, 166, 58, 'Exit VR', { fontSize: 15 });
 

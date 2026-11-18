@@ -8,3 +8,8 @@ blob-report/
 *.log
 .env
 .env.*
+
+# Large raw Overpass downloads stay local; converted maps are committed.
+# The small Healdsburg response remains tracked as a test fixture.
+data/osm/*.raw.json
+!data/osm/healdsburg-plaza.raw.json

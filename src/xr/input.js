@@ -153,6 +153,29 @@ export class XrInput {
     this.scene.updateMatrixWorld(true);
   }
 
+  /**
+   * Point this input at a replacement map scene without rebuilding the
+   * controller listeners. Used when the user loads a different OSM file.
+   */
+  rebind({ scene, world, placement, panel }) {
+    this.setActive(false);
+    this.scene = scene;
+    this.world = world;
+    this.placement = placement;
+    this.panel = panel;
+    for (const pointer of this.pointers) {
+      scene.add(
+        pointer.rayGroup,
+        pointer.gripGroup,
+        pointer.handGroup,
+        pointer.jointMesh,
+        pointer.handCursor,
+        pointer.handLine,
+      );
+    }
+    scene.updateMatrixWorld(true);
+  }
+
   get tableBounds() {
     return this.world.tableBounds ?? {
       halfWidth: 1.84,

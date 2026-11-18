@@ -7,18 +7,27 @@ import {
   parseMeters,
   ringArea,
   simplifyRing,
-} from '../../scripts/lib/osm-graph.mjs';
+} from '../../src/map/osmGraph.js';
 import { buildRoadNetwork, signalIsGreen } from '../../src/map/graph.js';
 import { MapTraffic } from '../../src/map/traffic.js';
 
-const raw = JSON.parse(
+// Healdsburg stays in the repository as the small converter fixture: its raw
+// Overpass response and converted document are both committed, so the
+// conversion pipeline can be checked byte for byte.
+const fixtureRaw = JSON.parse(
   readFileSync(new URL('../../data/osm/healdsburg-plaza.raw.json', import.meta.url), 'utf8'),
 );
-const document = JSON.parse(
+const fixtureDocument = JSON.parse(
   readFileSync(new URL('../../data/maps/healdsburg-plaza.json', import.meta.url), 'utf8'),
 );
 
-const options = {
+// Yorkville (Heartland) is the default extract the app ships with. Only the
+// converted document is committed: the raw response is ~32 MB.
+const document = JSON.parse(
+  readFileSync(new URL('../../data/maps/yorkville-heartland.json', import.meta.url), 'utf8'),
+);
+
+const fixtureOptions = {
   id: 'healdsburg-plaza',
   name: 'Healdsburg Plaza',
   place: 'Healdsburg, California',
@@ -55,23 +64,31 @@ test('ring helpers measure and simplify without dropping the shape', () => {
   assert.ok(simplified.length >= 4);
 });
 
-test('the committed map is exactly what the converter produces', () => {
-  const converted = convertOverpass(raw, options);
+test('the committed fixture is exactly what the converter produces', () => {
+  const converted = convertOverpass(fixtureRaw, fixtureOptions);
 
-  assert.equal(converted.id, document.id);
+  assert.equal(converted.id, fixtureDocument.id);
   assert.equal(converted.attribution, '© OpenStreetMap contributors · ODbL 1.0');
-  assert.deepEqual(converted.stats, document.stats);
-  assert.deepEqual(converted.nodes, document.nodes);
-  assert.deepEqual(converted.edges, document.edges);
-  assert.deepEqual(converted.buildings, document.buildings);
-  assert.deepEqual(converted.areas, document.areas);
-  assert.deepEqual(converted.streams, document.streams);
-  assert.deepEqual(converted.signals, document.signals);
-  assert.deepEqual(converted.stops, document.stops);
-  assert.deepEqual(converted.yields, document.yields);
+  assert.deepEqual(converted.stats, fixtureDocument.stats);
+  assert.deepEqual(converted.nodes, fixtureDocument.nodes);
+  assert.deepEqual(converted.edges, fixtureDocument.edges);
+  assert.deepEqual(converted.buildings, fixtureDocument.buildings);
+  assert.deepEqual(converted.areas, fixtureDocument.areas);
+  assert.deepEqual(converted.streams, fixtureDocument.streams);
+  assert.deepEqual(converted.signals, fixtureDocument.signals);
+  assert.deepEqual(converted.stops, fixtureDocument.stops);
+  assert.deepEqual(converted.yields, fixtureDocument.yields);
 });
 
-test('the converted map is a usable, bounded street graph', () => {
+test('the default map is the Heartland extract near Yorkville, Illinois', () => {
+  assert.equal(document.id, 'yorkville-heartland');
+  assert.equal(document.name, 'Heartland · Yorkville');
+  assert.equal(document.place, 'Yorkville, Illinois');
+  assert.equal(document.attribution, '© OpenStreetMap contributors · ODbL 1.0');
+  assert.match(document.source, /Overpass/);
+});
+
+test('the default map is a usable, bounded street graph', () => {
   const { nodes, edges, size, buildings, areas, stats } = document;
 
   assert.ok(nodes.length > 100);
@@ -81,12 +98,19 @@ test('the converted map is a usable, bounded street graph', () => {
   assert.ok(areas.length >= 10);
   assert.equal(stats.roadNodes, nodes.length);
   assert.equal(stats.roadEdges, edges.length);
+  assert.equal(stats.buildings, buildings.length);
+  assert.equal(stats.signals, document.signals.length);
+  assert.equal(stats.stops, document.stops.length);
+
+  // A 3-mile-radius extract is roughly 10 km across.
+  assert.ok(size.width > 9000 && size.width < 11000);
+  assert.ok(size.depth > 9000 && size.depth < 11000);
 
   for (const edge of edges) {
     assert.ok(nodes[edge.from], `edge ${edge.id} has a missing start node`);
     assert.ok(nodes[edge.to], `edge ${edge.id} has a missing end node`);
     assert.ok(edge.points.length >= 2);
-    assert.ok(edge.width >= 4 && edge.width <= 12);
+    assert.ok(edge.width >= 4 && edge.width <= 20);
     assert.ok(edge.speed > 0 && edge.speed <= 20);
     assert.equal(typeof edge.drivable, 'boolean');
     const limitX = size.width / 2 + 60;
@@ -109,6 +133,7 @@ test('the converted map is a usable, bounded street graph', () => {
 test('the runtime network builds directed lanes and approach controls', () => {
   const network = buildRoadNetwork(document);
   const drivable = network.lanes.filter((lane) => lane.drivable);
+  const oneways = document.edges.filter((edge) => edge.oneway).length;
 
   assert.equal(network.nodes.length, document.nodes.length);
   for (const lane of network.lanes) {
@@ -120,15 +145,21 @@ test('the runtime network builds directed lanes and approach controls', () => {
     assert.ok(['NS', 'EW'].includes(lane.axis));
   }
 
-  assert.ok(drivable.length > document.edges.length);
-  assert.ok(network.lanes.length >= document.edges.length * 2 - 40);
+  // Most ways carry traffic; driveways, parking aisles and private service
+  // ways stay visible but are flagged non-drivable.
+  assert.ok(drivable.length > document.edges.length * 0.8);
+  // Two-way edges produce a lane each way; one-way edges produce only one.
+  assert.equal(network.lanes.length, document.edges.length * 2 - oneways);
 
   const signals = [...network.controls.values()].filter((kind) => kind === 'signal');
   const stops = network.lanes.filter((lane) => lane.control === 'stop');
   const yields = network.lanes.filter((lane) => lane.control === 'yield');
-  assert.equal(signals.length, 2);
-  assert.ok(stops.length >= 8);
-  assert.ok(yields.length >= 3);
+  // Signals and signs are mapped onto the nearest junction, so a few map
+  // points can share one control node.
+  assert.ok(signals.length > 0);
+  assert.ok(signals.length <= document.signals.length);
+  assert.ok(stops.length > document.stops.length * 0.5);
+  assert.ok(yields.length >= Math.min(1, document.yields.length));
 
   // Every stop-signed lane points at a real junction node.
   for (const lane of [...stops, ...yields]) {
@@ -199,4 +230,23 @@ test('the same seed produces the same traffic', () => {
 
   assert.deepEqual(first.getSnapshots(), second.getSnapshots());
   assert.deepEqual(first.getStats(), second.getStats());
+});
+
+test('loading a saved Overpass file converts it without any service call', () => {
+  // This is exactly what the in-browser loader does with a chosen .json file.
+  const loaded = convertOverpass(fixtureRaw, {
+    ...fixtureOptions,
+    id: 'custom-test',
+    name: 'healdsburg plaza',
+    place: 'Loaded from your device',
+  });
+
+  assert.equal(loaded.id, 'custom-test');
+  assert.equal(loaded.name, 'healdsburg plaza');
+  assert.equal(loaded.place, 'Loaded from your device');
+  assert.deepEqual(loaded.edges, fixtureDocument.edges);
+  assert.deepEqual(loaded.size, fixtureDocument.size);
+
+  const network = buildRoadNetwork(loaded);
+  assert.ok(network.lanes.length > 0);
 });
