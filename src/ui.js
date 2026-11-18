@@ -1,6 +1,10 @@
 // All DOM wiring lives here. The simulation and renderer know nothing about
 // buttons, captions or accessibility state.
 
+// Map extracts range from a few thousand to tens of thousands of links, so the
+// counts read better with thousands separators.
+const count = (value) => Number(value || 0).toLocaleString('en-US');
+
 function formatTime(seconds) {
   const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
   const minutes = Math.floor(totalMilliseconds / 60000);
@@ -352,12 +356,12 @@ export class UI {
     elements.subtitle.textContent = place ? `${place} · real street graph` : 'Real street graph';
     elements.mapName.textContent = name;
     elements.mapBlurb.textContent = `${place || 'OpenStreetMap extract'} · ` +
-      `${stats.roadEdges} street links and ${stats.buildings} buildings. ` +
+      `${count(stats.roadEdges)} street links and ${count(stats.buildings)} buildings. ` +
       (custom
         ? 'Loaded from your saved OSM file. Nothing is uploaded or fetched at runtime.'
         : 'Drawn from the committed OSM extract. Nothing is fetched at runtime.');
     elements.mapAttribution.textContent = attribution;
-    elements.mapStatStreets.textContent = String(stats.roadEdges);
+    elements.mapStatStreets.textContent = count(stats.roadEdges);
     elements.mapDefault.hidden = !custom;
   }
 
