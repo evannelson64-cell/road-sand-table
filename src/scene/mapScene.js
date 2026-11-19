@@ -11,6 +11,7 @@ import { lambert } from './builders.js';
 import { createCornerHandles } from './cornerHandles.js';
 import { MAP_CAR_LENGTH, MAP_CAR_WIDTH } from '../map/traffic.js';
 import { mulberry32 } from '../map/traffic.js';
+import { DriveController, pickSpawnLane } from '../map/drive.js';
 
 const PALETTE = {
   sand: '#d9d0b8',
@@ -80,6 +81,25 @@ const CAR_VISUAL_SCALE = 1.4;
 const CAR_GROUND_Y = 0.09;
 const CAR_BODY_HEIGHT = 0.78;
 const CAR_CABIN_HEIGHT = 0.6;
+
+// Driver seat: eye height in a normal car, a wide dash-cam style field of view
+// and a near plane tight enough for the dashboard and bonnet.
+const DRIVER_EYE_HEIGHT = 1.32;
+const DRIVER_FOV = 62;
+const DRIVER_NEAR = 0.12;
+
+// Driver controls. The car cruises by itself; the driver only picks the road at
+// the next junction, which is what makes "never get stuck" possible.
+const DRIVE_KEYS = {
+  a: 'left',
+  arrowleft: 'left',
+  d: 'right',
+  arrowright: 'right',
+  w: 'straight',
+  arrowup: 'straight',
+  s: 'uturn',
+  arrowdown: 'uturn',
+};
 
 function hashColor(list, index) {
   // Mix the index so neighbouring footprints do not step through the palette
@@ -1012,16 +1032,23 @@ export function createMapView({ renderer, document, network, traffic }) {
   let active = false;
   let xrActive = false;
   let desktopCameraState = null;
+  let drive = null;
+  let driving = false;
+  let driverCameraState = null;
 
   function setActive(value) {
+    if (!value && driving) {
+      stopDriving();
+    }
     active = value;
-    controls.enabled = value && !following && !xrActive;
+    controls.enabled = value && !following && !driving && !xrActive;
   }
 
   function enterXrMode() {
     if (xrActive) {
       return;
     }
+    stopDriving();
     xrActive = true;
     desktopCameraState = {
       position: camera.position.clone(),
@@ -1078,6 +1105,7 @@ export function createMapView({ renderer, document, network, traffic }) {
   }
 
   function resetView() {
+    stopDriving();
     stopFollowing();
     frameAll();
   }
@@ -1087,6 +1115,7 @@ export function createMapView({ renderer, document, network, traffic }) {
       stopFollowing();
       return null;
     }
+    stopDriving();
     const car = traffic.cars.find((entry) => entry.id === carId) ?? null;
     if (!car) {
       return null;
@@ -1100,7 +1129,7 @@ export function createMapView({ renderer, document, network, traffic }) {
   function stopFollowing() {
     followId = null;
     following = null;
-    controls.enabled = true;
+    controls.enabled = active && !driving && !xrActive;
   }
 
   function updateFollow(dt) {
@@ -1123,6 +1152,97 @@ export function createMapView({ renderer, document, network, traffic }) {
     );
     camera.position.lerp(desiredPosition, blend);
     target.lerp(desiredTarget, blend);
+    camera.lookAt(target);
+  }
+
+  // ---- Driver seat ------------------------------------------------------
+
+  const driveEye = new THREE.Vector3();
+  const driveLook = new THREE.Vector3();
+
+  function startDriving() {
+    if (driving || xrActive || !active) {
+      return null;
+    }
+    drive ??= new DriveController(network);
+    const spawn = pickSpawnLane(network);
+    if (!spawn || !drive.start(spawn.lane, spawn.s)) {
+      return null;
+    }
+
+    driving = true;
+    stopFollowing();
+    // Drop any camera keys still held from the orbit view.
+    held.clear();
+    controls.enabled = false;
+    driverCameraState = {
+      position: camera.position.clone(),
+      target: controls.target.clone(),
+      fov: camera.fov,
+      near: camera.near,
+    };
+    camera.fov = DRIVER_FOV;
+    camera.near = DRIVER_NEAR;
+    camera.updateProjectionMatrix();
+    updateDriverCamera(1);
+    return drive.getState();
+  }
+
+  function stopDriving() {
+    if (!driving) {
+      return null;
+    }
+    driving = false;
+    if (drive) {
+      drive.speed = 0;
+    }
+    if (driverCameraState) {
+      camera.position.copy(driverCameraState.position);
+      controls.target.copy(driverCameraState.target);
+      target.copy(driverCameraState.target);
+      camera.fov = driverCameraState.fov;
+      camera.near = driverCameraState.near;
+      camera.updateProjectionMatrix();
+      camera.lookAt(target);
+      driverCameraState = null;
+    }
+    controls.enabled = active && !following && !xrActive;
+    return null;
+  }
+
+  function setDriveChoice(side) {
+    if (!driving || !drive || !drive.setRequest(side)) {
+      return null;
+    }
+    return drive.getState();
+  }
+
+  function getDriveState() {
+    return driving && drive ? drive.getState() : null;
+  }
+
+  function updateDriverCamera(dt) {
+    if (!drive?.lane) {
+      return;
+    }
+    const pose = drive.pose;
+    const forwardX = Math.sin(pose.heading);
+    const forwardZ = Math.cos(pose.heading);
+    // Sitting a little ahead of the lane pose puts the eye at the windscreen
+    // instead of over the rear axle.
+    driveEye.set(
+      pose.x + forwardX * 0.6,
+      DRIVER_EYE_HEIGHT,
+      pose.z + forwardZ * 0.6,
+    );
+    driveLook.set(
+      pose.x + forwardX * 42,
+      DRIVER_EYE_HEIGHT * 0.72,
+      pose.z + forwardZ * 42,
+    );
+    const blend = dt >= 1 ? 1 : 1 - Math.exp(-18 * dt);
+    camera.position.lerp(driveEye, blend);
+    target.lerp(driveLook, blend);
     camera.lookAt(target);
   }
 
@@ -1171,6 +1291,23 @@ export function createMapView({ renderer, document, network, traffic }) {
       return;
     }
     const key = event.key.toLowerCase();
+
+    if (driving) {
+      if (key === 'escape') {
+        event.preventDefault();
+        stopDriving();
+        onDriveChange?.(null);
+        return;
+      }
+      const choice = DRIVE_KEYS[key];
+      if (choice) {
+        event.preventDefault();
+        drive.setRequest(choice);
+        onDriveChange?.(drive.getState());
+      }
+      return;
+    }
+
     // Escape must work while a control button still has focus.
     if (key !== 'escape' && target?.closest('button')) {
       return;
@@ -1190,7 +1327,7 @@ export function createMapView({ renderer, document, network, traffic }) {
   }
 
   function applyKeys() {
-    if (following) {
+    if (following || driving) {
       return;
     }
     let x = 0;
@@ -1209,7 +1346,7 @@ export function createMapView({ renderer, document, network, traffic }) {
   }
 
   function onPointerDown(event) {
-    if (!active) {
+    if (!active || driving) {
       return;
     }
     dragging = true;
@@ -1217,7 +1354,7 @@ export function createMapView({ renderer, document, network, traffic }) {
   }
 
   function onPointerUp(event) {
-    if (!active) {
+    if (!active || driving) {
       return;
     }
     if (!dragging || !dragStart) {
@@ -1239,6 +1376,7 @@ export function createMapView({ renderer, document, network, traffic }) {
   }
 
   let onFollowChange = null;
+  let onDriveChange = null;
 
   function carAt(clientX, clientY) {
     const rect = renderer.domElement.getBoundingClientRect();
@@ -1278,13 +1416,18 @@ export function createMapView({ renderer, document, network, traffic }) {
 
   function update(dt) {
     if (!xrActive) {
-      applyKeys();
-      updateFollow(dt);
-      if (!following) {
-        updateOrbitLimits();
-        controls.update();
+      if (driving && drive) {
+        drive.update(dt, traffic.cars);
+        updateDriverCamera(dt);
+      } else {
+        applyKeys();
+        updateFollow(dt);
+        if (!following) {
+          updateOrbitLimits();
+          controls.update();
+        }
+        updateClipPlanes();
       }
-      updateClipPlanes();
     }
     updateCars(traffic.getSnapshots());
 
@@ -1365,6 +1508,10 @@ export function createMapView({ renderer, document, network, traffic }) {
     resetView,
     follow,
     stopFollowing,
+    startDriving,
+    stopDriving,
+    setDriveChoice,
+    getDriveState,
     carAt,
     setActive,
     enterXrMode,
@@ -1373,11 +1520,17 @@ export function createMapView({ renderer, document, network, traffic }) {
     set onFollowChange(handler) {
       onFollowChange = handler;
     },
+    set onDriveChange(handler) {
+      onDriveChange = handler;
+    },
     get followId() {
       return followId;
     },
     get following() {
       return Boolean(following);
+    },
+    get driving() {
+      return driving;
     },
     get xrActive() {
       return xrActive;

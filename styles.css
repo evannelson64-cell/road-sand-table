@@ -1212,6 +1212,133 @@ button:disabled {
   margin: 9px 0 0;
 }
 
+/* Driver seat: a junction strip that only appears while driving. */
+.drive-hud {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 11px;
+  padding: 0 0 11px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drive-hud[hidden] {
+  display: none;
+}
+
+.drive-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.drive-speed {
+  min-width: 76px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: var(--forest);
+  color: var(--paper-solid);
+  font-size: 12.5px;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.drive-route {
+  flex: 1;
+  min-width: 120px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.drive-head .text-button {
+  margin-left: auto;
+}
+
+.drive-choices {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.drive-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.drive-choice kbd {
+  grid-row: 1 / span 2;
+  min-width: 27px;
+  padding: 5px 0;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: var(--paper-solid);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.drive-choice-label {
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.15;
+}
+
+.drive-choice-name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-choice:hover:not(:disabled) {
+  border-color: var(--forest);
+}
+
+.drive-choice.is-active {
+  border-color: var(--forest);
+  background: var(--forest);
+  color: var(--paper-solid);
+}
+
+.drive-choice.is-active kbd {
+  border-color: rgba(251, 248, 239, 0.5);
+  background: transparent;
+  color: inherit;
+}
+
+.drive-choice.is-active .drive-choice-name {
+  color: rgba(251, 248, 239, 0.78);
+}
+
+.drive-choice:disabled,
+.drive-choice.is-unavailable {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.drive-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
 body.is-map .atmosphere {
   display: none;
 }
@@ -1272,6 +1399,7 @@ body.is-map .ui-shell {
   }
 
   #map-follow,
+  #map-drive,
   #map-reset-view {
     min-height: 40px;
     padding: 0 12px;
@@ -1288,5 +1416,19 @@ body.is-map .ui-shell {
 
   .caption-card {
     top: 162px;
+  }
+}
+
+@media (max-width: 760px) {
+  .drive-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drive-choice-name {
+    font-size: 10px;
+  }
+
+  .drive-hint {
+    display: none;
   }
 }

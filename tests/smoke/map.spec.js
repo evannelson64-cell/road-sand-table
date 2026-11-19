@@ -183,6 +183,68 @@ test('the mode switch works both ways without disturbing the sand table', async 
   expectClean(errors);
 });
 
+test('driver seat puts the camera on the street and takes a turn choice', async ({ page }) => {
+  const errors = await openMap(page);
+  const home = (await page.evaluate(() => window.__roadMap.getState())).camera;
+
+  await expect(page.locator('#drive-hud')).toBeHidden();
+  await page.locator('#map-drive').click();
+  await page.waitForFunction(() => window.__roadMap.getState().driving === true);
+
+  await expect(page.locator('#drive-hud')).toBeVisible();
+  await expect(page.locator('#map-drive')).toHaveText('Driving');
+  await expect(page.locator('#map-foot-note')).toContainText('Driver seat');
+
+  const started = await page.evaluate(() => window.__roadMap.getState());
+  expect(started.drive.lane.length).toBeGreaterThan(2);
+  expect(started.drive.choices.straight).toBeTruthy();
+  expect(started.drive.speedKmh).toBeGreaterThan(5);
+  // Windscreen height, wide lens and a tight near plane.
+  expect(started.camera.fov).toBe(62);
+  expect(started.camera.near).toBeLessThan(0.2);
+  expect(started.camera.position[1]).toBeLessThan(2);
+
+  // At least one turn is always offered, even at a dead end (turn around).
+  await page.waitForFunction(
+    () => document.querySelectorAll('.drive-choice:not([disabled])').length > 0,
+    null,
+    { timeout: 10_000 },
+  );
+
+  // A/← asks for the left; the HUD resolves it to a real road.
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForFunction(
+    () => window.__roadMap.getState().drive.requested === 'left',
+    null,
+    { timeout: 5_000 },
+  );
+  const pending = await page.evaluate(() => window.__roadMap.getState().drive);
+  expect(pending.resolved).not.toBeNull();
+  expect(pending.resolved.name.length).toBeGreaterThan(1);
+
+  // Clicking an available turn is equivalent to the keyboard.
+  const enabled = page.locator('.drive-choice:not([disabled])').first();
+  const side = await enabled.getAttribute('data-drive-choice');
+  await enabled.click();
+  await page.waitForFunction(
+    (chosen) => window.__roadMap.getState().drive.requested === chosen,
+    side,
+    { timeout: 5_000 },
+  );
+
+  // Escape returns to the overlook with the previous camera intact.
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => window.__roadMap.getState().driving === false);
+  await expect(page.locator('#drive-hud')).toBeHidden();
+  await expect(page.locator('#map-drive')).toHaveText('Drive');
+  const end = await page.evaluate(() => window.__roadMap.getState());
+  expect(end.camera.fov).toBe(home.fov);
+  expect(end.camera.near).toBeGreaterThan(8);
+  expect(end.camera.distance).toBeGreaterThan(home.distance * 0.9);
+
+  expectClean(errors);
+});
+
 test('zoom dives from the extract overview to street level and Reset view comes home', async ({ page }) => {
   const errors = await openMap(page);
   const home = (await page.evaluate(() => window.__roadMap.getState())).camera;

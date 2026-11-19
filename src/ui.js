@@ -5,6 +5,8 @@
 // counts read better with thousands separators.
 const count = (value) => Number(value || 0).toLocaleString('en-US');
 
+const MAP_IDLE_HINT = 'Drag to orbit · Right-drag or two-finger swipe to pan · Scroll, pinch or +/− to zoom from the whole extract to street level · WASD moves the camera';
+
 function formatTime(seconds) {
   const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
   const minutes = Math.floor(totalMilliseconds / 60000);
@@ -87,7 +89,15 @@ export class UI {
       mapDensity: document.querySelector('#map-density'),
       mapDensityValue: document.querySelector('#map-density-value'),
       mapFollow: document.querySelector('#map-follow'),
+      mapDrive: document.querySelector('#map-drive'),
       mapResetView: document.querySelector('#map-reset-view'),
+      mapPanel: document.querySelector('#map-panel'),
+      driveHud: document.querySelector('#drive-hud'),
+      driveSpeed: document.querySelector('#drive-speed'),
+      driveRoute: document.querySelector('#drive-route'),
+      driveHint: document.querySelector('#drive-hint'),
+      driveExit: document.querySelector('#drive-exit'),
+      driveChoices: [...document.querySelectorAll('[data-drive-choice]')],
       mapFootNote: document.querySelector('#map-foot-note'),
     };
 
@@ -170,6 +180,22 @@ export class UI {
     elements.mapPlay.addEventListener('click', () => this.callbacks.onMapPlayPause());
     elements.mapFollow.addEventListener('click', () => this.callbacks.onMapFollow());
     elements.mapResetView.addEventListener('click', () => this.callbacks.onMapResetView());
+    elements.mapDrive.addEventListener('click', (event) => {
+      // Do not leave focus on the button: Space and arrow keys belong to the
+      // driver once the seat is taken.
+      event.currentTarget.blur();
+      this.callbacks.onMapDrive();
+    });
+    elements.driveExit.addEventListener('click', (event) => {
+      event.currentTarget.blur();
+      this.callbacks.onMapDrive();
+    });
+    for (const button of elements.driveChoices) {
+      button.addEventListener('click', (event) => {
+        event.currentTarget.blur();
+        this.callbacks.onMapDriveChoice(event.currentTarget.dataset.driveChoice);
+      });
+    }
     elements.mapLoad.addEventListener('click', () => elements.mapFile.click());
     elements.mapFile.addEventListener('change', () => {
       const [file] = elements.mapFile.files ?? [];
@@ -411,7 +437,63 @@ export class UI {
     elements.mapFollow.classList.toggle('is-active', following);
     elements.mapFootNote.textContent = following
       ? 'Following a car · press Escape or Stop following to return to the map view'
-      : 'Drag to orbit · Right-drag or two-finger swipe to pan · Scroll, pinch or +/− to zoom from the whole extract to street level · WASD moves the camera';
+      : MAP_IDLE_HINT;
+  }
+
+  /**
+   * Show or update the driver-seat strip. Passing null hides it and puts the
+   * Drive button back to its idle label.
+   */
+  setDriving(state) {
+    const { elements } = this;
+    const driving = Boolean(state);
+    this.driving = driving;
+    elements.driveHud.hidden = !driving;
+    elements.mapPanel.classList.toggle('is-driving', driving);
+    elements.mapDrive.classList.toggle('is-active', driving);
+    elements.mapDrive.textContent = driving ? 'Driving' : 'Drive';
+    elements.mapDrive.setAttribute('aria-pressed', String(driving));
+    elements.mapFootNote.textContent = driving
+      ? 'Driver seat · the car cruises itself · A / ← left · D / → right · W / ↑ straight · S / ↓ turn around · Esc exits'
+      : MAP_IDLE_HINT;
+    if (!driving) {
+      return;
+    }
+
+    elements.driveSpeed.textContent = `${Math.round(state.speedKmh ?? 0)} km/h`;
+    const metres = Math.max(0, Math.round(state.distanceToJunction));
+    if (state.segment === 'connector') {
+      elements.driveRoute.textContent = `Crossing onto ${state.lane}`;
+    } else if (metres < 1000) {
+      elements.driveRoute.textContent = `Next junction in ${metres} m · ${state.lane}`;
+    } else {
+      elements.driveRoute.textContent = `On ${state.lane}`;
+    }
+
+    for (const button of elements.driveChoices) {
+      const side = button.dataset.driveChoice;
+      const name = state.choices?.[side] ?? null;
+      button.disabled = !name;
+      button.classList.toggle('is-unavailable', !name);
+      button.classList.toggle('is-active', Boolean(name) && state.requested === side);
+      const label = button.querySelector('.drive-choice-name');
+      if (label) {
+        label.textContent = name ?? 'No turn';
+      }
+    }
+
+    const sideLabel = { left: 'left', straight: 'straight', right: 'right', uturn: 'turn-around' };
+    if (state.ghost) {
+      elements.driveHint.textContent =
+        'Easing past a blockage — the drive continues automatically.';
+    } else if (state.resolved && state.resolved.side !== state.requested) {
+      elements.driveHint.textContent =
+        `No ${sideLabel[state.requested] ?? state.requested} here — taking ` +
+        `${sideLabel[state.resolved.side]} onto ${state.resolved.name}.`;
+    } else {
+      elements.driveHint.textContent =
+        'W / ↑ straight · A / ← left · D / → right · S / ↓ turn around · Esc exit';
+    }
   }
 
   setVrBusy(busy) {
