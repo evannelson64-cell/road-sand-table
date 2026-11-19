@@ -3112,16 +3112,28 @@
             optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'],
           });
           document.body.appendChild(xrButton);
-          // VRButton only hides itself when navigator.xr is missing; a desktop
-          // with WebXR but no headset would otherwise show "VR NOT SUPPORTED".
-          navigator.xr?.isSessionSupported?.('immersive-vr')
-            .then((ok) => {
-              if (!ok && !renderer.xr.isPresenting) xrButton.style.display = 'none';
-            })
-            .catch(() => {});
-          // VRButton hides itself when WebXR is unavailable.
+
+          // VRButton leaves "VR NOT SUPPORTED" on screen when a browser has no
+          // headset (or no WebXR at all). Only show the button when a session
+          // can actually start. Rechecked once, because VRButton resolves its
+          // own support probe asynchronously and would re-show the button.
+          const hideIfUnsupported = () => {
+            const probe = navigator.xr?.isSessionSupported?.('immersive-vr');
+            const hide = () => {
+              if (!renderer.xr.isPresenting) xrButton.style.display = 'none';
+            };
+            if (!probe) {
+              hide();
+              return;
+            }
+            probe.then((ok) => { if (!ok) hide(); }).catch(hide);
+          };
+          hideIfUnsupported();
+          window.setTimeout(hideIfUnsupported, 1500);
+
           renderer.xr.addEventListener('sessionstart', () => {
             renderer.xr.setFoveation(1);
+            xrButton.style.display = 'block';
             xrButton.textContent = 'Exit VR';
           });
           renderer.xr.addEventListener('sessionend', () => {
