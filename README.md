@@ -10,6 +10,11 @@ and a separate **real map** mode built from a one-time OpenStreetMap extract of
 streets and farmland. Switching modes never changes or unloads the other scene,
 and you can drop in your own saved OSM file at any time.
 
+A third, standalone page, **Satellite drive**, is a single-file WebXR driving
+simulator built from live Esri satellite imagery and a live Overpass query for
+the same Yorkville centre. It has a proper cockpit, car physics and a Quest 2
+draw-call budget. The two pages link to each other in both directions.
+
 > **Current status: Stage 3 complete — ten scenario tiles — plus the Stage 4
 > real-street map, desktop and immersive.** The immersive flow passes automated
 > WebXR emulator tests. It has **not yet been confirmed on physical Quest
@@ -19,6 +24,8 @@ and you can drop in your own saved OSM file at any time.
 > **Live site:** <https://evannelson64-cell.github.io/road-sand-table/> (HTTPS)
 >
 > **Real map direct link:** <https://evannelson64-cell.github.io/road-sand-table/?mode=map>
+>
+> **Satellite drive direct link:** <https://evannelson64-cell.github.io/road-sand-table/quest-drive.html>
 
 ![Signal intersection with an unprotected left turn](docs/stage-3-signal.png)
 
@@ -275,12 +282,50 @@ at its previous state when you exit.
 - **Exit VR:** the panel button or the Quest system menu returns to the desktop
   map without disturbing the sand table.
 
+## Satellite drive
+
+`quest-drive.html` is a deliberately separate, self-contained page: one HTML
+file, ES-module Three.js from unpkg, and no build step. It streams **real data
+at runtime** — no procedural filler world.
+
+![Satellite drive: real Esri aerial imagery under a cockpit view](docs/stage-5-satellite-drive.png)
+
+- **Ground:** Esri World Imagery tiles painted into one canvas atlas, so the
+  entire landscape is a single draw call. Both the imagery and the OSM vectors
+  go through the same Web Mercator → local-tangent-plane projection, so streets
+  land on their real pixels.
+- **Streets and buildings:** a 600 m Overpass query for highways, buildings and
+  `natural=tree` nodes, cached in `localStorage`. Road ribbons are merged into
+  one geometry, buildings into another. Yorkville has no building height tags,
+  so heights come from `building` heuristics.
+- **Two quality tiers**, switchable from the desktop pill or from the in-world
+  dashboard panel in VR:
+  - *Performance* — z16 imagery, flat extruded blocks, 350 m draw distance.
+  - *High-detail* — z18 imagery plus a z16 far ring, Terrarium relief, a
+    procedural GLSL facade shader (window grids, sills, brick/concrete/glass),
+    sidewalks, crosswalks, storefront signs, instanced trees and lamps, 550 m
+    draw distance with fog into a sky dome.
+- **Budget:** both tiers stay well under 120 draw calls (about 28 in
+  Performance and 50 in High-detail including the mirror pass on the test
+  machine), `shadowMap.enabled = false`, `renderer.xr.setFoveation(1)`, and a
+  live fps / draw-call / triangle / speed readout.
+- **Cockpit and driving:** dashboard, A-pillars, hood, a steering wheel that
+  turns with the wheel angle, working rear-view mirror (a 320×128 render target
+  refreshed every few frames), and smooth bicycle-model physics. Input from
+  WASD/arrows, the Gamepad API (steering axis, triggers for throttle/brake) and
+  Quest thumbsticks plus trigger/squeeze.
+
+Query parameters: `?lat=&lon=` move the centre and `?r=` sets the Overpass
+radius in metres (200–1200, default 600).
+
+![Satellite drive in the WebXR emulator, with the in-world quality panel](docs/stage-5-satellite-vr.png)
+
 ## Test it
 
 ```bash
 npm test                  # 40 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 20 browser tests: 5 sand-table + 10 real-map + 5 WebXR
+npm run test:smoke        # 22 browser tests: 5 sand-table + 10 real-map + 5 WebXR + 2 satellite
 npm run test:all          # both
 ```
 
@@ -311,7 +356,7 @@ real-network cruising, a chosen right turn, a dead-end U-turn and the blocked-
 lane failsafe — and the browser test checks the windscreen camera, junction
 choices, keyboard and click input, and a clean exit.
 
-Last local verification: **40/40 unit tests and 20/20 Playwright tests passing**
+Last local verification: **40/40 unit tests and 22/22 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures
