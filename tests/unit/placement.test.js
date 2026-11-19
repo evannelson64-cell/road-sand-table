@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
   MAX_TABLE_HEIGHT,
+  MAX_TABLE_SCALE,
   MIN_TABLE_HEIGHT,
+  MIN_TABLE_SCALE,
   TablePlacement,
   VR_FORWARD_DISTANCE,
   VR_TABLE_HEIGHT,
@@ -52,4 +54,25 @@ test('height is clamped, viewer-relative translation follows the head, and lock 
   placement.moveRelativeToViewer(1, 0, viewer);
   placement.rotateBy(1);
   assert.deepEqual(root.position.toArray(), locked.toArray());
+});
+
+test('scale steps are multiplicative and span the wide logarithmic range', () => {
+  const root = new THREE.Group();
+  const placement = new TablePlacement(root);
+  placement.placeInFront(viewer);
+
+  const start = root.scale.x;
+  placement.scaleBy(1.14);
+  assert.ok(root.scale.x / start > 1.13, 'a step is a fixed multiplier');
+  assert.ok(root.scale.x / start < 1.15);
+
+  for (let i = 0; i < 60; i += 1) {
+    placement.scaleBy(1.14);
+  }
+  assert.equal(root.scale.x, MAX_TABLE_SCALE, 'scaling up stops at the wide ceiling');
+
+  for (let i = 0; i < 200; i += 1) {
+    placement.scaleBy(0.88);
+  }
+  assert.equal(root.scale.x, MIN_TABLE_SCALE, 'scaling down stops at the floor');
 });

@@ -591,6 +591,13 @@ body.is-xr .vr-toast {
   border-top: 1px solid var(--line);
 }
 
+.control-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
 .text-button {
   min-height: 34px;
   padding: 0 12px;

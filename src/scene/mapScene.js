@@ -641,20 +641,63 @@ export function createMapView({ renderer, document, network, traffic }) {
   scene.background = new THREE.Color('#e2e9e6');
   scene.fog = new THREE.Fog('#e2e9e6', span, span * 3);
 
+  const homeDistance = span * 1.661;
+  const maxDistance = Math.max(2200, homeDistance * 2.2);
   const camera = new THREE.PerspectiveCamera(
     40,
     1,
     Math.max(1, span * 0.0016),
-    Math.max(4000, span * 4),
+    // Keep the whole orbited extract inside the far plane even at the furthest
+    // zoom level.
+    Math.max(4000, maxDistance + span * 1.2),
   );
+  const baseNear = camera.near;
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.screenSpacePanning = false;
-  controls.minDistance = Math.max(26, span * 0.004);
-  controls.maxDistance = Math.max(2200, span * 2.2);
+  // Zoom is logarithmic: every wheel notch, pinch or +/- press multiplies the
+  // orbit distance, so the same gesture travels from a whole 10 km extract to
+  // a single parked car. Only the far end is bounded; Reset view comes home.
+  controls.minDistance = Math.max(1.2, span * 0.00012);
+  controls.maxDistance = maxDistance;
+  controls.zoomSpeed = 1.35;
   controls.minPolarAngle = 0.12;
-  controls.maxPolarAngle = Math.PI * 0.47;
+  const baseMaxPolar = Math.PI * 0.47;
+  controls.maxPolarAngle = baseMaxPolar;
+  // Wheel and pinch zoom toward whatever is under the pointer, so diving into
+  // a street corner lands there instead of on the middle of the extract.
+  controls.zoomToCursor = true;
+
+  // The closer the camera goes, the more top-down the orbit has to stay: below
+  // this height the near plane would sit inside the plinth and the view would
+  // be a wall of ground.
+  const MIN_CAMERA_HEIGHT = 0.5;
+  function updateOrbitLimits() {
+    const distance = camera.position.distanceTo(controls.target);
+    const ratio = (MIN_CAMERA_HEIGHT - controls.target.y) / Math.max(distance, 0.001);
+    const limit = Math.acos(THREE.MathUtils.clamp(ratio, -1, 1));
+    controls.maxPolarAngle = Math.min(
+      baseMaxPolar,
+      Math.max(controls.minPolarAngle, limit),
+    );
+  }
+
+  // A fixed 16 m near plane is what keeps depth precision across a 10 km map,
+  // but it also slices the world shut once the camera dives to street level.
+  // Track the orbit distance instead: near stays a small fraction of it, so
+  // the near plane follows whatever is actually on screen.
+  const NEAR_RATIO = 0.006;
+  const NEAR_FLOOR = 0.25;
+  function updateClipPlanes() {
+    const distance = camera.position.distanceTo(controls.target);
+    const near = THREE.MathUtils.clamp(distance * NEAR_RATIO, NEAR_FLOOR, baseNear);
+    if (Math.abs(camera.near - near) > near * 0.05) {
+      camera.near = near;
+      camera.updateProjectionMatrix();
+    }
+  }
 
   const root = new THREE.Group();
   root.name = 'osm-map';
@@ -1025,6 +1068,9 @@ export function createMapView({ renderer, document, network, traffic }) {
 
   function frameAll() {
     const span = Math.max(width, depth);
+    // Reset the orbit limits first: a street-level zoom may have clamped the
+    // polar angle, and the overview framing needs the full range back.
+    controls.maxPolarAngle = baseMaxPolar;
     camera.position.set(span * 0.6, span * 1.04, span * 1.15);
     target.set(0, 0, 0);
     controls.target.copy(target);
@@ -1235,8 +1281,10 @@ export function createMapView({ renderer, document, network, traffic }) {
       applyKeys();
       updateFollow(dt);
       if (!following) {
+        updateOrbitLimits();
         controls.update();
       }
+      updateClipPlanes();
     }
     updateCars(traffic.getSnapshots());
 

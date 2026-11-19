@@ -31,12 +31,19 @@ export function createWorld(canvas, scenario, cars) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.075;
-  controls.enablePan = false;
-  controls.minDistance = 2.6;
-  controls.maxDistance = 11;
+  controls.enablePan = true;
+  controls.screenSpacePanning = false;
+  // The orbit distance is logarithmic too: one wheel notch is a fixed
+  // percentage, so the range reaches from a single junction to the whole
+  // diorama. Reset view restores the framed overview.
+  controls.minDistance = 0.6;
+  controls.maxDistance = 26;
   controls.minPolarAngle = 0.18;
-  controls.maxPolarAngle = Math.PI * 0.46;
-  controls.target.set(0, -0.35, 0);
+  const baseMaxPolar = Math.PI * 0.46;
+  controls.maxPolarAngle = baseMaxPolar;
+  controls.zoomToCursor = true;
+  // Aim at the sand surface so wheel/pinch zoom lands under the pointer.
+  controls.target.set(0, 0.02, 0);
 
   let userHasMovedCamera = false;
   controls.addEventListener('start', () => {
@@ -44,6 +51,9 @@ export function createWorld(canvas, scenario, cars) {
   });
 
   function frameCamera() {
+    // A tight zoom may have clamped the polar angle; the overview needs the
+    // full range back.
+    controls.maxPolarAngle = baseMaxPolar;
     const aspect = window.innerWidth / Math.max(1, window.innerHeight);
     const narrow = aspect < 1.25;
     camera.fov = narrow ? 50 : 34;
@@ -53,7 +63,7 @@ export function createWorld(canvas, scenario, cars) {
       narrow ? 5.2 : 4.75,
       narrow ? 6.7 : 5.7,
     );
-    controls.target.set(0, narrow ? -0.45 : -0.35, 0);
+    controls.target.set(0, 0.02, 0);
     controls.update();
   }
 
@@ -229,6 +239,19 @@ export function createWorld(canvas, scenario, cars) {
   window.addEventListener('resize', resize);
   resize();
 
+  // The closer the orbit goes, the more top-down it has to look, or the camera
+  // ends up inside the wooden slab. Zooming out restores the shallow angles.
+  const MIN_CAMERA_HEIGHT = 0.25;
+  function updateOrbitLimits() {
+    const distance = camera.position.distanceTo(controls.target);
+    const ratio = (MIN_CAMERA_HEIGHT - controls.target.y) / Math.max(distance, 0.001);
+    const limit = Math.acos(Math.min(1, Math.max(-1, ratio)));
+    controls.maxPolarAngle = Math.min(
+      baseMaxPolar,
+      Math.max(controls.minPolarAngle, limit),
+    );
+  }
+
   return {
     renderer,
     scene,
@@ -243,6 +266,10 @@ export function createWorld(canvas, scenario, cars) {
     },
     enterXrMode,
     exitXrMode,
+    resetView() {
+      userHasMovedCamera = false;
+      frameCamera();
+    },
     loadScenario,
     updateCars(snapshots) {
       fleet?.update(snapshots);
@@ -267,6 +294,7 @@ export function createWorld(canvas, scenario, cars) {
     },
     render() {
       if (!renderer.xr.isPresenting) {
+        updateOrbitLimits();
         controls.update();
       }
       renderer.render(scene, camera);
