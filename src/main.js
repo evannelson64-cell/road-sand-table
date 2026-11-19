@@ -513,6 +513,7 @@ function start() {
       mapView?.enterXrMode();
       mapView?.stopFollowing();
       ui.setFollowing(null);
+      ui.setDriving(null);
       mapPanel?.setVisible(false);
       mapInput?.setActive(false);
       ui.setMapPlaying(false);
@@ -620,6 +621,8 @@ function start() {
         paused: mapPaused,
         rate: mapRate,
         following: mapView.followId,
+        driving: mapView.driving,
+        drive: mapView.getDriveState(),
         targetCars: mapCarCount,
         stats: mapTraffic.getStats(),
         network: {
@@ -635,6 +638,7 @@ function start() {
           position: mapView.camera.position.toArray(),
           target: mapView.controls.target.toArray(),
           near: mapView.camera.near,
+          fov: mapView.camera.fov,
           distance: mapView.camera.position.distanceTo(mapView.controls.target),
           minDistance: mapView.controls.minDistance,
           maxDistance: mapView.controls.maxDistance,
@@ -646,6 +650,10 @@ function start() {
         xr: mapXrState(),
       }),
       getCars: () => mapTraffic.getSnapshots(),
+      getDrive: () => mapView.getDriveState(),
+      startDriving: startMapDrive,
+      stopDriving: stopMapDrive,
+      setDriveChoice: setMapDriveChoice,
       follow: followMapCar,
       stopFollowing: () => {
         mapView?.stopFollowing();
@@ -759,6 +767,7 @@ function start() {
       traffic,
     });
     view.onFollowChange = (carId) => ui.setFollowing(carId);
+    view.onDriveChange = (state) => ui.setDriving(state);
 
     if (!mapPanel) {
       mapPanel = createMapPanel();
@@ -802,7 +811,9 @@ function start() {
     mapAccumulator = 0;
 
     if (previousView) {
+      previousView.stopDriving();
       previousView.dispose();
+      ui?.setDriving(null);
     }
 
     refreshMapXrPanel();
@@ -992,6 +1003,7 @@ function start() {
       mapView?.setActive(false);
       mapView?.stopFollowing();
       ui.setFollowing(null);
+      ui.setDriving(null);
       world.controls.enabled = true;
       ui.setMode('sandbox');
       playing = sandboxWasPlaying;
@@ -1032,6 +1044,10 @@ function start() {
     if (!mapView || !mapTraffic) {
       return null;
     }
+    if (mapView.driving) {
+      mapView.stopDriving();
+      ui.setDriving(null);
+    }
     let id = carId;
     if (!id) {
       const moving = mapTraffic.cars.filter((car) => car.speed > 2);
@@ -1062,6 +1078,48 @@ function start() {
   function resetMapView() {
     mapView?.resetView();
     ui.setFollowing(null);
+    ui.setDriving(null);
+  }
+
+  function startMapDrive() {
+    if (!mapView) {
+      return null;
+    }
+    if (xrActive) {
+      ui.showVrToast('Exit VR before taking the driver seat.');
+      return null;
+    }
+    const state = mapView.startDriving();
+    if (!state) {
+      return null;
+    }
+    // A moving world is what makes the drive feel alive.
+    if (mapPaused) {
+      setMapPaused(false);
+    }
+    ui.setFollowing(null);
+    ui.setDriving(state);
+    return state;
+  }
+
+  function stopMapDrive() {
+    mapView?.stopDriving();
+    ui.setDriving(null);
+  }
+
+  function toggleMapDrive() {
+    if (mapView?.driving) {
+      stopMapDrive();
+      return;
+    }
+    startMapDrive();
+  }
+
+  function setMapDriveChoice(side) {
+    const state = mapView?.setDriveChoice(side) ?? null;
+    if (state) {
+      ui.setDriving(state);
+    }
   }
 
   async function switchScenario(id) {
@@ -1194,6 +1252,9 @@ function start() {
       if (!xrActive && time - lastMapUiUpdate > 220) {
         lastMapUiUpdate = time;
         ui.setMapStats(mapTraffic.getStats());
+        if (mapView.driving) {
+          ui.setDriving(mapView.getDriveState());
+        }
       }
       mapView.render();
       return;
@@ -1352,6 +1413,8 @@ function start() {
         onMapSpeed: setMapRate,
         onMapDensity: setMapDensity,
         onMapFollow: toggleMapFollow,
+        onMapDrive: toggleMapDrive,
+        onMapDriveChoice: setMapDriveChoice,
         onMapResetView: resetMapView,
         onMapFile: loadMapFile,
         onMapDefault: loadDefaultMap,

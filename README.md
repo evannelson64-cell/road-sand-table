@@ -85,9 +85,18 @@ stay exactly as they were.
   follow it; `Escape` returns to the overview. The overview distance, fog and
   zoom range scale with the extract, so a 10 km slice and a 600 m plaza both
   frame well.
-- **Controls:** pause/play, 0.5× / 1× / 2× traffic speed, density, ride along and
-  reset view. The info card reports live cars, moving cars, average speed and
-  street-link count.
+- **Controls:** pause/play, 0.5× / 1× / 2× traffic speed, density, ride along,
+  drive and reset view. The info card reports live cars, moving cars, average
+  speed and street-link count.
+- **Driver seat:** **Drive** drops the camera to windscreen height and lets you
+  take the wheel on the real street graph. The car cruises and steers itself;
+  you only pick the road at the next junction. Every junction lights up its
+  actual options — **Left**, **Straight**, **Right** and **Turn around** — with
+  the street name each one leads onto. Use `A` / `←`, `D` / `→`, `W` / `↑` and
+  `S` / `↓`, or click the buttons. `Escape` (or **Exit drive**) returns to the
+  overlook. It cannot dead-end: a missing turn falls back to the straightest
+  road, a cul-de-sac offers **Turn around**, and a lane blocked by traffic is
+  eased past automatically after a few seconds.
 - **Your own map:** **Load OSM file…** accepts either a saved Overpass JSON
   response (anything with an `elements` array) or an already-converted map
   document. The file is read in the browser, converted with the same code as the
@@ -229,6 +238,27 @@ Controllers use the trigger for panel buttons and squeeze to grab. Hand tracking
 is requested as an optional session feature; a pinch performs the same action
 when hands are active. Controllers remain the fallback.
 
+### Driver seat
+
+Press **Drive** in the map panel to drop from the overlook to windscreen height
+and drive the extract yourself. The car handles speed and steering; you choose
+the road at each junction.
+
+![Driver seat at a Yorkville junction, with the turn choices on screen](docs/stage-4-map-drive.png)
+
+- **Turn controls:** `A` / `←` left, `W` / `↑` straight, `D` / `→` right,
+  `S` / `↓` turn around — or click the four buttons. Each one shows the street
+  it leads onto, and greys out when that turn is not on offer.
+- **Junction readout:** the strip reports the distance to the next junction and
+  highlights the turn that will be taken.
+- **Never stuck:** every junction on the graph has at least one continuation, so
+  a requested turn that does not exist falls back to the straightest road. A
+  dead end offers **Turn around**. If other traffic blocks the lane, the drive
+  eases past it after a few seconds, and a stall that survives that is nudged
+  across the junction. The car keeps moving without any input.
+- **Exit:** `Escape`, **Exit drive** or **Driving** returns to the overlook with
+  the previous camera framing.
+
 ### Real map in VR
 
 Open **Real map**, then press **Enter VR**. The map arrives on the same kind of
@@ -248,9 +278,9 @@ at its previous state when you exit.
 ## Test it
 
 ```bash
-npm test                  # 32 Node unit tests
+npm test                  # 40 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 19 browser tests: 5 sand-table + 9 real-map + 5 WebXR
+npm run test:smoke        # 20 browser tests: 5 sand-table + 10 real-map + 5 WebXR
 npm run test:all          # both
 ```
 
@@ -276,8 +306,12 @@ dragging, corner grabbing, two-hand scaling, scenario navigation, collision
 review and the safe replay. The map tests verify the room-scale miniature,
 traffic play/pause and speed inside VR, density changes, placement controls,
 stick movement, locking, panel buttons and a clean return to both desktop modes.
+The driver-seat suite drives the Yorkville graph in Node — turn classification,
+real-network cruising, a chosen right turn, a dead-end U-turn and the blocked-
+lane failsafe — and the browser test checks the windscreen camera, junction
+choices, keyboard and click input, and a clean exit.
 
-Last local verification: **32/32 unit tests and 19/19 Playwright tests passing**
+Last local verification: **40/40 unit tests and 20/20 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures
@@ -361,6 +395,7 @@ src/scene/scenery.js             houses and instanced trees
 src/scene/cars.js                low-poly car meshes and contact patches
 src/map/graph.js                 lane network, connectors, signals, approach signs
 src/map/traffic.js               deterministic real-street traffic and junction locks
+src/map/drive.js                 player car, turn choice and the never-stuck failsafes
 src/scene/mapScene.js            low-poly OSM scene, orbit camera and ride along
 src/xr/session.js                immersive-vr session lifecycle
 src/xr/tablePlacement.js         room-scale transform and constraints

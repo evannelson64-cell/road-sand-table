@@ -172,6 +172,39 @@
       </section>
 
       <section class="control-panel map-panel" id="map-panel" aria-label="Map controls" hidden>
+        <div class="drive-hud" id="drive-hud" hidden>
+          <div class="drive-head">
+            <span class="kicker">Driver seat</span>
+            <span id="drive-speed" class="drive-speed">0 km/h</span>
+            <span id="drive-route" class="drive-route">Follow the road</span>
+            <button id="drive-exit" class="text-button" type="button">Exit drive</button>
+          </div>
+          <div class="drive-choices" role="group" aria-label="Choose a turn at the next junction">
+            <button class="drive-choice" data-drive-choice="left" type="button">
+              <kbd>←</kbd>
+              <span class="drive-choice-label">Left</span>
+              <span class="drive-choice-name">No turn</span>
+            </button>
+            <button class="drive-choice is-active" data-drive-choice="straight" type="button">
+              <kbd>↑</kbd>
+              <span class="drive-choice-label">Straight</span>
+              <span class="drive-choice-name">No turn</span>
+            </button>
+            <button class="drive-choice" data-drive-choice="right" type="button">
+              <kbd>→</kbd>
+              <span class="drive-choice-label">Right</span>
+              <span class="drive-choice-name">No turn</span>
+            </button>
+            <button class="drive-choice" data-drive-choice="uturn" type="button">
+              <kbd>↓</kbd>
+              <span class="drive-choice-label">Turn around</span>
+              <span class="drive-choice-name">No turn</span>
+            </button>
+          </div>
+          <p class="drive-hint" id="drive-hint">
+            W / ↑ straight · A / ← left · D / → right · S / ↓ turn around · Esc exit
+          </p>
+        </div>
         <div class="map-panel-row">
           <button id="map-play" class="play-button" type="button" aria-label="Pause traffic">
             <span id="map-play-symbol" aria-hidden="true">❚❚</span>
@@ -188,6 +221,7 @@
             <span id="map-density-value" class="map-slider-value">64</span>
           </label>
           <button id="map-follow" class="secondary-button" type="button">Ride along</button>
+          <button id="map-drive" class="secondary-button" type="button" aria-pressed="false">Drive</button>
           <button id="map-reset-view" class="text-button" type="button">Reset view</button>
         </div>
         <p class="foot-note" id="map-foot-note">
