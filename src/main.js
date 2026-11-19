@@ -22,10 +22,10 @@ const XR_UI_INTERVAL_MS = 250;
 const MAP_FIXED_DT = 1 / 60;
 const MAP_DEFAULT_CARS = 64;
 const MAP_VR_WIDTH = 1.68;
-// Scale +/- steps are multiplicative, so these bounds are just the far ends of
-// a logarithmic range: a hand-sized sketch up to a table you can walk around.
-const MAP_VR_MIN_WIDTH = 0.45;
-const MAP_VR_MAX_WIDTH = 6.4;
+// Immersive scale is logarithmic like the desktop zoom: Scale +/- multiply the
+// table, and these rails sit 32x either side of the home scale, so the buttons
+// never feel capped. Reset table returns to the home miniature.
+const MAP_VR_SCALE_RATIO = 32;
 const MAP_VR_HEIGHT = 0.9;
 const MAP_VR_FORWARD = 1.62;
 const MAP_PANEL_FORWARD = 0.76;
@@ -704,10 +704,11 @@ function start() {
 
   function createMapPlacement(view) {
     const span = Math.max(view.plinthWidth, view.plinthDepth);
+    const homeScale = MAP_VR_WIDTH / span;
     return new TablePlacement(view.root, {
-      homeScale: MAP_VR_WIDTH / span,
-      minScale: MAP_VR_MIN_WIDTH / span,
-      maxScale: MAP_VR_MAX_WIDTH / span,
+      homeScale,
+      minScale: homeScale / MAP_VR_SCALE_RATIO,
+      maxScale: homeScale * MAP_VR_SCALE_RATIO,
       forwardDistance: MAP_VR_FORWARD,
       tableHeight: MAP_VR_HEIGHT,
       moveSpeed: 0.9,

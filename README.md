@@ -97,8 +97,9 @@ stay exactly as they were.
 - **VR:** **Enter VR** places the same map as a 1.7 m room-scale miniature at
   table height, with a matching world-space panel for pause/play, speed,
   density and placement. Grip any corner to slide it, twist to rotate and use
-  two grips to scale; **Scale ±** steps multiplicatively from a hand-sized
-  sketch to a 6 m table. The sticks move, lift and turn the table. The miniature
+  two grips to scale; **Scale ±** multiplies the table and its rails sit 32×
+  either side of the home size, so it behaves like the desktop zoom. The sticks
+  move, lift and turn the table. The miniature
   uses the same traffic, signals, buildings and ODbL credit as desktop, and its
   panel shows the extract name, width and true scale ratio.
 - **No runtime service calls:** the browser only reads the committed

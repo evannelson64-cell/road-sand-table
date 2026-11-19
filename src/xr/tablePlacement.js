@@ -5,8 +5,11 @@
 export const VR_TABLE_SCALE = 0.28;
 export const VR_TABLE_HEIGHT = 0.85;
 export const VR_FORWARD_DISTANCE = 1.02;
-export const MIN_TABLE_SCALE = 0.06;
-export const MAX_TABLE_SCALE = 1;
+// The same 32x log rails as the map miniature: scale steps stay multiplicative
+// and the limits are far enough out that the buttons feel unlimited.
+export const TABLE_SCALE_RATIO = 32;
+export const MIN_TABLE_SCALE = VR_TABLE_SCALE / TABLE_SCALE_RATIO;
+export const MAX_TABLE_SCALE = VR_TABLE_SCALE * TABLE_SCALE_RATIO;
 export const MIN_TABLE_HEIGHT = 0.32;
 export const MAX_TABLE_HEIGHT = 1.45;
 
@@ -177,6 +180,8 @@ export class TablePlacement {
       },
       yaw: this.root.rotation.y,
       scale: this.root.scale.x,
+      minScale: this.minScale,
+      maxScale: this.maxScale,
       locked: this.locked,
       home: this.home
         ? {

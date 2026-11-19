@@ -80,6 +80,7 @@ test('immersive VR has four corner grips, placement controls and a movable panel
   await clickPanel(page, xr, 'scale-up');
   current = await state(page);
   expect(current.xr.table.scale).toBeGreaterThan(0.28);
+  expect(current.xr.table.maxScale / current.xr.table.home.scale).toBeGreaterThan(30);
 
   await clickPanel(page, xr, 'play');
   current = await state(page);

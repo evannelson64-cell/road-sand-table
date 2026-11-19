@@ -75,4 +75,8 @@ test('scale steps are multiplicative and span the wide logarithmic range', () =>
     placement.scaleBy(0.88);
   }
   assert.equal(root.scale.x, MIN_TABLE_SCALE, 'scaling down stops at the floor');
+  assert.ok(
+    MAX_TABLE_SCALE / MIN_TABLE_SCALE > 1000,
+    'the rails span a thousandfold range, so scale feels unlimited',
+  );
 });

@@ -101,6 +101,9 @@ test('the real map becomes a room-scale table in immersive VR', async ({ page, x
   await clickPanel(page, xr, 'map-scale-up');
   current = await state(page);
   expect(current.xr.table.scale).toBeGreaterThan(scaleBefore);
+  // Scale +/- multiply the miniature and the rails sit 32x out, so there is no
+  // tucked-in ceiling the way the old fixed 2.5 m width had.
+  expect(current.xr.table.maxScale / current.xr.table.home.scale).toBeGreaterThan(30);
 
   const heightBefore = current.xr.table.position.y;
   await clickPanel(page, xr, 'map-height-up');
