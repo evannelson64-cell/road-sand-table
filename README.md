@@ -249,7 +249,7 @@ at its previous state when you exit.
 ```bash
 npm test                  # 32 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 18 browser tests: 5 sand-table + 9 real-map + 4 WebXR
+npm run test:smoke        # 19 browser tests: 5 sand-table + 9 real-map + 5 WebXR
 npm run test:all          # both
 ```
 
@@ -276,7 +276,7 @@ review and the safe replay. The map tests verify the room-scale miniature,
 traffic play/pause and speed inside VR, density changes, placement controls,
 stick movement, locking, panel buttons and a clean return to both desktop modes.
 
-Last local verification: **32/32 unit tests and 18/18 Playwright tests passing**
+Last local verification: **32/32 unit tests and 19/19 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures
