@@ -149,3 +149,41 @@ test('the scenario menu loads different road layouts', async ({ page }) => {
   expect(errors.pageErrors).toEqual([]);
   expect(errors.failedRequests).toEqual([]);
 });
+
+test('the sandbox view zooms from a whole diorama down to one junction and resets', async ({ page }) => {
+  const errors = await openApp(page);
+  const home = (await page.evaluate(() => window.__sandTable.getState())).camera;
+  expect(home.distance).toBeGreaterThan(4);
+  expect(home.minDistance).toBeLessThan(1);
+
+  await page.evaluate(() => {
+    const canvas = document.querySelector('#scene');
+    const rect = canvas.getBoundingClientRect();
+    for (let i = 0; i < 160; i += 1) {
+      canvas.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+  });
+  await page.waitForFunction(() => window.__sandTable.getState().camera.distance < 1);
+
+  const close = (await page.evaluate(() => window.__sandTable.getState())).camera;
+  expect(close.distance).toBeLessThan(1);
+
+  await page.locator('#reset-view').click();
+  await page.waitForFunction(
+    (distance) => window.__sandTable.getState().camera.distance > distance * 0.8,
+    home.distance,
+  );
+  expect((await page.evaluate(() => window.__sandTable.getState())).camera.distance)
+    .toBeGreaterThan(4);
+
+  await page.waitForTimeout(250);
+  expect(errors.consoleErrors).toEqual([]);
+  expect(errors.pageErrors).toEqual([]);
+  expect(errors.failedRequests).toEqual([]);
+});

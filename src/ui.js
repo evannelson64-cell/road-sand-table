@@ -39,6 +39,7 @@ export class UI {
       stepBack: document.querySelector('#step-back'),
       stepForward: document.querySelector('#step-forward'),
       reset: document.querySelector('#reset'),
+      resetView: document.querySelector('#reset-view'),
       scrub: document.querySelector('#scrub'),
       timeCurrent: document.querySelector('#time-current'),
       timeTotal: document.querySelector('#time-total'),
@@ -154,6 +155,7 @@ export class UI {
     elements.stepBack.addEventListener('click', () => this.callbacks.onStepBack());
     elements.stepForward.addEventListener('click', () => this.callbacks.onStepForward());
     elements.reset.addEventListener('click', () => this.callbacks.onReset());
+    elements.resetView.addEventListener('click', () => this.callbacks.onResetView());
     elements.enterVr.addEventListener('click', () => this.callbacks.onEnterVr());
     elements.scenarioSelect.addEventListener('change', () => {
       this.callbacks.onScenario(elements.scenarioSelect.value);
@@ -409,7 +411,7 @@ export class UI {
     elements.mapFollow.classList.toggle('is-active', following);
     elements.mapFootNote.textContent = following
       ? 'Following a car · press Escape or Stop following to return to the map view'
-      : 'Drag to orbit · Right-drag or two-finger swipe to pan · Scroll to zoom · WASD / arrows to move the camera';
+      : 'Drag to orbit · Right-drag or two-finger swipe to pan · Scroll, pinch or +/− to zoom from the whole extract to street level · WASD moves the camera';
   }
 
   setVrBusy(busy) {

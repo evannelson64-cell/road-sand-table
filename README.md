@@ -77,10 +77,14 @@ stay exactly as they were.
   right-hand offset lanes, follow the car ahead, obey one-way streets, simple
   two-phase signals and approach-mapped stop/yield signs, and take one junction
   box at a time. Density is adjustable from 0 to 180 cars.
-- **Camera:** orbit, pan, scroll/pinch zoom, and `WASD` / arrow keys. `Q` / `E`
-  rotate; `+` / `−` zoom. Click any car, or press **Ride along**, to follow it.
-  `Escape` returns to the overview. The overview distance, fog and zoom limits
-  scale with the extract, so a 10 km slice and a 600 m plaza both frame well.
+- **Camera:** orbit, pan and a logarithmic scroll/pinch zoom that runs from the
+  whole 10 km extract down to street level, always centred on the pointer. The
+  near plane tracks the orbit distance, so close-ups do not slice the map open.
+  `WASD` / arrow keys move, `Q` / `E` rotate, `+` / `−` zoom, and **Reset view**
+  returns to the framed overview. Click any car, or press **Ride along**, to
+  follow it; `Escape` returns to the overview. The overview distance, fog and
+  zoom range scale with the extract, so a 10 km slice and a 600 m plaza both
+  frame well.
 - **Controls:** pause/play, 0.5× / 1× / 2× traffic speed, density, ride along and
   reset view. The info card reports live cars, moving cars, average speed and
   street-link count.
@@ -93,7 +97,8 @@ stay exactly as they were.
 - **VR:** **Enter VR** places the same map as a 1.7 m room-scale miniature at
   table height, with a matching world-space panel for pause/play, speed,
   density and placement. Grip any corner to slide it, twist to rotate and use
-  two grips to scale; the sticks move, lift and turn the table. The miniature
+  two grips to scale; **Scale ±** steps multiplicatively from a hand-sized
+  sketch to a 6 m table. The sticks move, lift and turn the table. The miniature
   uses the same traffic, signals, buildings and ODbL credit as desktop, and its
   panel shows the extract name, width and true scale ratio.
 - **No runtime service calls:** the browser only reads the committed
@@ -190,10 +195,12 @@ There is no build command. `npm run serve` is just a static file server. Do not
 open `index.html` through `file://`, because the browser blocks the JSON fetch
 and ES modules.
 
-The page works on desktop and phone. Drag to orbit and scroll/pinch to zoom.
-`Space` toggles play/pause; left/right arrow keys step one frame when focus is
-not inside a control. The **Enter VR** button appears only when the browser
-reports `immersive-vr` support.
+The page works on desktop and phone. Drag to orbit, right-drag or two-finger
+swipe to pan, and scroll/pinch to zoom from the whole diorama down to a single
+junction — the wheel and pinch zoom toward the pointer, and **Reset view**
+restores the framing. `Space` toggles play/pause; left/right arrow keys step one
+frame when focus is not inside a control. The **Enter VR** button appears only
+when the browser reports `immersive-vr` support.
 
 To open the real map directly, use
 **<http://127.0.0.1:4173/?mode=map>**, or use the **Sand table / Real map** switch
@@ -240,9 +247,9 @@ at its previous state when you exit.
 ## Test it
 
 ```bash
-npm test                  # 31 Node unit tests
+npm test                  # 32 Node unit tests
 npx playwright install chromium
-npm run test:smoke        # 17 browser tests: 4 sand-table + 8 real-map + 5 WebXR
+npm run test:smoke        # 19 browser tests: 5 sand-table + 9 real-map + 5 WebXR
 npm run test:all          # both
 ```
 
@@ -269,7 +276,7 @@ review and the safe replay. The map tests verify the room-scale miniature,
 traffic play/pause and speed inside VR, density changes, placement controls,
 stick movement, locking, panel buttons and a clean return to both desktop modes.
 
-Last local verification: **31/31 unit tests and 17/17 Playwright tests passing**
+Last local verification: **32/32 unit tests and 19/19 Playwright tests passing**
 in headless Chromium 141. The live site is served over HTTPS by GitHub Pages.
 
 **What the emulator cannot verify:** tracked-hand joint poses, pinch gestures

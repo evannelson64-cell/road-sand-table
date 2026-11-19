@@ -183,6 +183,50 @@ test('the mode switch works both ways without disturbing the sand table', async 
   expectClean(errors);
 });
 
+test('zoom dives from the extract overview to street level and Reset view comes home', async ({ page }) => {
+  const errors = await openMap(page);
+  const home = (await page.evaluate(() => window.__roadMap.getState())).camera;
+  expect(home.distance).toBeGreaterThan(10_000);
+  // At the overview the near plane is metres wide, which is what keeps depth
+  // precision across 10 km.
+  expect(home.near).toBeGreaterThan(8);
+  expect(home.minDistance).toBeLessThan(2);
+
+  // OrbitControls treats every wheel notch as a fixed percentage, so a burst of
+  // synthetic notches reaches the near limit instead of crawling there.
+  await page.evaluate(() => {
+    const canvas = document.querySelector('#scene');
+    const rect = canvas.getBoundingClientRect();
+    for (let i = 0; i < 260; i += 1) {
+      canvas.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -120,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+  });
+  await page.waitForFunction(() => window.__roadMap.getState().camera.distance < 5, null, { timeout: 30_000 });
+
+  const close = (await page.evaluate(() => window.__roadMap.getState())).camera;
+  expect(close.distance).toBeLessThan(5);
+  // The near plane follows the orbit distance, so a street-level camera does
+  // not slice the world open.
+  expect(close.near).toBeLessThan(1);
+
+  await page.locator('#map-reset-view').click();
+  await page.waitForFunction(
+    (distance) => window.__roadMap.getState().camera.distance > distance * 0.9,
+    home.distance,
+  );
+  const restored = (await page.evaluate(() => window.__roadMap.getState())).camera;
+  expect(restored.distance).toBeGreaterThan(10_000);
+  expect(restored.near).toBeGreaterThan(8);
+
+  expectClean(errors);
+});
+
 test('a saved converted map file loads from disk without a service call', async ({ page }) => {
   const errors = await openMap(page);
 

@@ -5,8 +5,8 @@
 export const VR_TABLE_SCALE = 0.28;
 export const VR_TABLE_HEIGHT = 0.85;
 export const VR_FORWARD_DISTANCE = 1.02;
-export const MIN_TABLE_SCALE = 0.16;
-export const MAX_TABLE_SCALE = 0.48;
+export const MIN_TABLE_SCALE = 0.06;
+export const MAX_TABLE_SCALE = 1;
 export const MIN_TABLE_HEIGHT = 0.32;
 export const MAX_TABLE_HEIGHT = 1.45;
 

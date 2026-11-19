@@ -22,8 +22,10 @@ const XR_UI_INTERVAL_MS = 250;
 const MAP_FIXED_DT = 1 / 60;
 const MAP_DEFAULT_CARS = 64;
 const MAP_VR_WIDTH = 1.68;
-const MAP_VR_MIN_WIDTH = 1.2;
-const MAP_VR_MAX_WIDTH = 2.5;
+// Scale +/- steps are multiplicative, so these bounds are just the far ends of
+// a logarithmic range: a hand-sized sketch up to a table you can walk around.
+const MAP_VR_MIN_WIDTH = 0.45;
+const MAP_VR_MAX_WIDTH = 6.4;
 const MAP_VR_HEIGHT = 0.9;
 const MAP_VR_FORWARD = 1.62;
 const MAP_PANEL_FORWARD = 0.76;
@@ -634,6 +636,8 @@ function start() {
           target: mapView.controls.target.toArray(),
           near: mapView.camera.near,
           distance: mapView.camera.position.distanceTo(mapView.controls.target),
+          minDistance: mapView.controls.minDistance,
+          maxDistance: mapView.controls.maxDistance,
         },
         render: {
           calls: world.renderer.info.render.calls,
@@ -1333,6 +1337,7 @@ function start() {
         onStepBack: stepBack,
         onStepForward: stepForward,
         onReset: resetRun,
+        onResetView: () => world.resetView(),
         onReplaySlow: replaySlowMotion,
         onShowAvoid: showAvoidance,
         onTryAgain: tryAgain,
@@ -1383,6 +1388,14 @@ function start() {
           playing,
           rate,
           behaviorId,
+          camera: {
+            position: world.camera.position.toArray(),
+            target: world.controls.target.toArray(),
+            near: world.camera.near,
+            distance: world.camera.position.distanceTo(world.controls.target),
+            minDistance: world.controls.minDistance,
+            maxDistance: world.controls.maxDistance,
+          },
           collision: simulation.collision
             ? structuredClone(simulation.collision)
             : null,
